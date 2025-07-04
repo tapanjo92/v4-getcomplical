@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020"],
+    "declaration": true,
+    "outDir": "./dist",
+    "rootDir": "./",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "moduleResolution": "node",
+    "allowSyntheticDefaultImports": true,
+    "strictNullChecks": true,
+    "strictPropertyInitialization": true,
+    "typeRoots": ["./node_modules/@types"]
+  },
+  "include": [
+    "infrastructure/**/*",
+    "lambdas/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "cdk.out",
+    "dist"
+  ]
+}
