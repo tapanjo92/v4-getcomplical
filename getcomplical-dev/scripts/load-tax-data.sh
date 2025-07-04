@@ -19,6 +19,7 @@ echo "Using Lambda function: $FUNCTION_NAME"
 echo "Loading Australia 2024 tax data..."
 aws lambda invoke \
   --function-name $FUNCTION_NAME \
+  --cli-binary-format raw-in-base64-out \
   --payload '{"country": "AU", "year": 2024}' \
   --region ap-south-1 \
   /tmp/au-2024-response.json
@@ -29,6 +30,7 @@ cat /tmp/au-2024-response.json | jq '.'
 echo "Loading New Zealand 2024 tax data..."
 aws lambda invoke \
   --function-name $FUNCTION_NAME \
+  --cli-binary-format raw-in-base64-out \
   --payload '{"country": "NZ", "year": 2024}' \
   --region ap-south-1 \
   /tmp/nz-2024-response.json
@@ -39,6 +41,7 @@ cat /tmp/nz-2024-response.json | jq '.'
 echo "Loading all 2025 tax data..."
 aws lambda invoke \
   --function-name $FUNCTION_NAME \
+  --cli-binary-format raw-in-base64-out \
   --payload '{"country": "ALL", "year": 2025}' \
   --region ap-south-1 \
   /tmp/all-2025-response.json

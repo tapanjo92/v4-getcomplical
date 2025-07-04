@@ -18,8 +18,7 @@
     "typeRoots": ["./node_modules/@types"]
   },
   "include": [
-    "infrastructure/**/*",
-    "lambdas/**/*"
+    "infrastructure/**/*"
   ],
   "exclude": [
     "node_modules",

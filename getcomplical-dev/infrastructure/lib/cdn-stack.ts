@@ -2,6 +2,7 @@ import * as cdk from 'aws-cdk-lib';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
+import * as s3 from 'aws-cdk-lib/aws-s3';
 import { Construct } from 'constructs';
 
 interface CdnStackProps extends cdk.StackProps {
@@ -16,6 +17,24 @@ export class CdnStack extends cdk.Stack {
 
     const apiDomainName = `${props.apiGateway.restApiId}.execute-api.${this.region}.amazonaws.com`;
 
+    // Create S3 bucket for CloudFront logs with unique name
+    const logBucket = new s3.Bucket(this, 'CdnLogsBucket', {
+      bucketName: `getcomplical-cdn-logs-${this.account}-${this.region}`,
+      lifecycleRules: [{
+        expiration: cdk.Duration.days(30),
+      }],
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
+      objectOwnership: s3.ObjectOwnership.BUCKET_OWNER_PREFERRED,
+      blockPublicAccess: new s3.BlockPublicAccess({
+        blockPublicAcls: false,
+        blockPublicPolicy: true,
+        ignorePublicAcls: false,
+        restrictPublicBuckets: true,
+      }),
+      encryption: s3.BucketEncryption.S3_MANAGED,
+    });
+
     // Separate cache policies for different query patterns
     const popularQueriesCachePolicy = new cloudfront.CachePolicy(this, 'PopularQueriesCache', {
       cachePolicyName: 'GetComplicalPopularQueries',
@@ -23,7 +42,7 @@ export class CdnStack extends cdk.Stack {
       defaultTtl: cdk.Duration.hours(24),
       maxTtl: cdk.Duration.days(7),
       minTtl: cdk.Duration.hours(12),
-      queryStringBehavior: cloudfront.CacheQueryStringBehavior.allowList(['country', 'year']),
+      queryStringBehavior: cloudfront.CacheQueryStringBehavior.allowList('country', 'year'),
       headerBehavior: cloudfront.CacheHeaderBehavior.allowList('X-Api-Key'),
       enableAcceptEncodingGzip: true,
       enableAcceptEncodingBrotli: true,
@@ -46,7 +65,6 @@ export class CdnStack extends cdk.Stack {
       defaultBehavior: {
         origin: new origins.HttpOrigin(apiDomainName, {
           protocolPolicy: cloudfront.OriginProtocolPolicy.HTTPS_ONLY,
-          originPath: '/v1',
         }),
         allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
         cachedMethods: cloudfront.CachedMethods.CACHE_GET_HEAD_OPTIONS,
@@ -57,6 +75,7 @@ export class CdnStack extends cdk.Stack {
           comment: 'Forward API key header and all query strings',
           queryStringBehavior: cloudfront.OriginRequestQueryStringBehavior.all(),
           headerBehavior: cloudfront.OriginRequestHeaderBehavior.allowList('X-Api-Key'),
+          cookieBehavior: cloudfront.OriginRequestCookieBehavior.none(),
         }),
         responseHeadersPolicy: new cloudfront.ResponseHeadersPolicy(this, 'ApiResponseHeaders', {
           responseHeadersPolicyName: 'GetComplicalApiHeaders',
@@ -74,6 +93,7 @@ export class CdnStack extends cdk.Stack {
             accessControlAllowOrigins: ['*'],
             accessControlAllowHeaders: ['*'],
             accessControlAllowMethods: ['GET', 'HEAD', 'OPTIONS'],
+            accessControlAllowCredentials: false,
             accessControlMaxAge: cdk.Duration.seconds(86400),
             originOverride: true,
           },
@@ -89,65 +109,31 @@ export class CdnStack extends cdk.Stack {
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
           // Smart caching: Use Lambda@Edge to route to appropriate cache
           cachePolicy: filteredQueriesCachePolicy,
-          originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+          originRequestPolicy: new cloudfront.OriginRequestPolicy(this, 'TaxDatesOriginRequestPolicy', {
+            originRequestPolicyName: 'GetComplicalTaxDatesOriginRequest',
+            queryStringBehavior: cloudfront.OriginRequestQueryStringBehavior.all(),
+            headerBehavior: cloudfront.OriginRequestHeaderBehavior.allowList('X-Api-Key'),
+            cookieBehavior: cloudfront.OriginRequestCookieBehavior.none(),
+          }),
         },
-        '/dashboard/*': {
+        '/v1/dashboard/*': {
           origin: new origins.HttpOrigin(apiDomainName, {
             protocolPolicy: cloudfront.OriginProtocolPolicy.HTTPS_ONLY,
-            originPath: '/v1',
           }),
           allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
           cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
-          originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER,
+          originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
         },
       },
       priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
       enabled: true,
       httpVersion: cloudfront.HttpVersion.HTTP2_AND_3,
-      // Enable logging for cache analysis
+      // Enable standard CloudFront logging
       enableLogging: true,
-      logBucket: new cdk.aws_s3.Bucket(this, 'CdnLogs', {
-        bucketName: `getcomplical-cdn-logs-${this.account}`,
-        lifecycleRules: [{
-          expiration: cdk.Duration.days(30),
-        }],
-        removalPolicy: cdk.RemovalPolicy.DESTROY,
-        autoDeleteObjects: true,
-      }),
-    });
-
-    // CloudWatch metrics for cache performance
-    new cloudfront.CfnRealtimeLogConfig(this, 'RealtimeLogConfig', {
-      name: 'GetComplicalCacheAnalytics',
-      endPoints: [{
-        streamType: 'Kinesis',
-        kinesisStreamConfig: {
-          roleArn: new cdk.aws_iam.Role(this, 'LogRole', {
-            assumedBy: new cdk.aws_iam.ServicePrincipal('cloudfront.amazonaws.com'),
-          }).roleArn,
-          streamArn: new cdk.aws_kinesis.Stream(this, 'LogStream', {
-            streamName: 'getcomplical-cache-logs',
-            retentionPeriod: cdk.Duration.days(1),
-          }).streamArn,
-        },
-      }],
-      fields: [
-        'timestamp',
-        'c-ip',
-        'sc-status',
-        'cs-uri-query',
-        'x-edge-result-type', // Hit, Miss, Error
-        'x-edge-response-result-type',
-        'cs-protocol',
-        'cs-bytes',
-        'time-taken',
-        'x-forwarded-for',
-        'cs-method',
-        'cs-host',
-        'cs-uri-stem',
-      ],
-      samplingRate: 100, // Log all requests initially to understand patterns
+      logBucket: logBucket,
+      logFilePrefix: 'cloudfront-logs/',
+      logIncludesCookies: false,
     });
 
     new cdk.CfnOutput(this, 'DistributionDomainName', {
@@ -158,6 +144,11 @@ export class CdnStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'DistributionId', {
       value: this.distribution.distributionId,
       description: 'CloudFront distribution ID',
+    });
+
+    new cdk.CfnOutput(this, 'LogBucketName', {
+      value: logBucket.bucketName,
+      description: 'S3 bucket for CloudFront logs',
     });
 
     new cdk.CfnOutput(this, 'CachePolicyInfo', {

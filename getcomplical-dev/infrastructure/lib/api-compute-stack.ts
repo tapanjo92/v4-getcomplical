@@ -1,10 +1,12 @@
 import * as cdk from 'aws-cdk-lib';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
+import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
+import * as path from 'path';
 
 interface ApiComputeStackProps extends cdk.StackProps {
   userPool: cognito.UserPool;
@@ -14,67 +16,53 @@ interface ApiComputeStackProps extends cdk.StackProps {
 
 export class ApiComputeStack extends cdk.Stack {
   public readonly api: apigateway.RestApi;
-  public readonly authorizerFunction: lambda.Function;
-  public readonly apiHandlerFunction: lambda.Function;
-  public readonly dashboardFunction: lambda.Function;
-  public readonly dataLoaderFunction: lambda.Function;
+  public readonly authorizerFunction: NodejsFunction;
+  public readonly apiHandlerFunction: NodejsFunction;
+  public readonly dashboardFunction: NodejsFunction;
+  public readonly dataLoaderFunction: NodejsFunction;
 
   constructor(scope: Construct, id: string, props: ApiComputeStackProps) {
     super(scope, id, props);
 
     // Create Lambda functions
-    this.authorizerFunction = new lambda.Function(this, 'AuthorizerFunction', {
+    this.authorizerFunction = new NodejsFunction(this, 'AuthorizerFunction', {
       runtime: lambda.Runtime.NODEJS_20_X,
-      handler: 'authorizer.handler',
-      code: lambda.Code.fromAsset('lambdas/auth', {
-        bundling: {
-          image: lambda.Runtime.NODEJS_20_X.bundlingImage,
-          command: [
-            'bash', '-c',
-            'cp -r . /asset-output && cd /asset-output && npm install --production'
-          ],
-        },
-      }),
+      entry: path.join(__dirname, '../../lambdas/auth/authorizer.ts'),
+      handler: 'handler',
       environment: {
         API_KEYS_TABLE: props.apiKeysTable.tableName,
       },
       timeout: cdk.Duration.seconds(30),
       memorySize: 256,
       tracing: lambda.Tracing.ACTIVE,
+      bundling: {
+        minify: true,
+        target: 'node20',
+        sourceMap: true,
+      },
     });
 
-    this.apiHandlerFunction = new lambda.Function(this, 'ApiHandlerFunction', {
+    this.apiHandlerFunction = new NodejsFunction(this, 'ApiHandlerFunction', {
       runtime: lambda.Runtime.NODEJS_20_X,
-      handler: 'handler.handler',
-      code: lambda.Code.fromAsset('lambdas/api', {
-        bundling: {
-          image: lambda.Runtime.NODEJS_20_X.bundlingImage,
-          command: [
-            'bash', '-c',
-            'cp -r . /asset-output && cd /asset-output && npm install --production'
-          ],
-        },
-      }),
+      entry: path.join(__dirname, '../../lambdas/api/handler.ts'),
+      handler: 'handler',
       environment: {
         TAX_DATA_TABLE: props.taxDataTable.tableName,
       },
       timeout: cdk.Duration.seconds(30),
       memorySize: 512,
       tracing: lambda.Tracing.ACTIVE,
+      bundling: {
+        minify: true,
+        target: 'node20',
+        sourceMap: true,
+      },
     });
 
-    this.dashboardFunction = new lambda.Function(this, 'DashboardFunction', {
+    this.dashboardFunction = new NodejsFunction(this, 'DashboardFunction', {
       runtime: lambda.Runtime.NODEJS_20_X,
-      handler: 'dashboard.handler',
-      code: lambda.Code.fromAsset('lambdas/api', {
-        bundling: {
-          image: lambda.Runtime.NODEJS_20_X.bundlingImage,
-          command: [
-            'bash', '-c',
-            'cp -r . /asset-output && cd /asset-output && npm install --production'
-          ],
-        },
-      }),
+      entry: path.join(__dirname, '../../lambdas/api/dashboard.ts'),
+      handler: 'handler',
       environment: {
         API_KEYS_TABLE: props.apiKeysTable.tableName,
         USER_POOL_ID: props.userPool.userPoolId,
@@ -82,6 +70,11 @@ export class ApiComputeStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(30),
       memorySize: 256,
       tracing: lambda.Tracing.ACTIVE,
+      bundling: {
+        minify: true,
+        target: 'node20',
+        sourceMap: true,
+      },
     });
 
     // Grant permissions
@@ -95,24 +88,22 @@ export class ApiComputeStack extends cdk.Stack {
     }));
 
     // Create Data Loader function
-    this.dataLoaderFunction = new lambda.Function(this, 'DataLoaderFunction', {
+    this.dataLoaderFunction = new NodejsFunction(this, 'DataLoaderFunction', {
       runtime: lambda.Runtime.NODEJS_20_X,
-      handler: 'index.handler',
-      code: lambda.Code.fromAsset('lambdas/data-loader', {
-        bundling: {
-          image: lambda.Runtime.NODEJS_20_X.bundlingImage,
-          command: [
-            'bash', '-c',
-            'cp -r . /asset-output && cd /asset-output && npm install --production'
-          ],
-        },
-      }),
+      entry: path.join(__dirname, '../../lambdas/data-loader/index.ts'),
+      handler: 'handler',
       environment: {
         TAX_DATA_TABLE: props.taxDataTable.tableName,
       },
       timeout: cdk.Duration.minutes(5),
       memorySize: 512,
       tracing: lambda.Tracing.ACTIVE,
+      bundling: {
+        minify: false, // Keep false for data loader as it has large data files
+        target: 'node20',
+        sourceMap: true,
+        externalModules: ['@aws-sdk/*'], // AWS SDK v3 is available in Lambda runtime
+      },
     });
 
     // Grant write permissions to tax data table
@@ -138,10 +129,17 @@ export class ApiComputeStack extends cdk.Stack {
       },
     });
 
-    const authorizer = new apigateway.TokenAuthorizer(this, 'ApiKeyAuthorizer', {
+    // Create authorizers
+    const apiKeyAuthorizer = new apigateway.TokenAuthorizer(this, 'ApiKeyAuthorizer', {
       handler: this.authorizerFunction,
       identitySource: 'method.request.header.X-Api-Key',
       resultsCacheTtl: cdk.Duration.minutes(5),
+    });
+
+    // Cognito authorizer for dashboard endpoints
+    const cognitoAuthorizer = new apigateway.CognitoUserPoolsAuthorizer(this, 'CognitoAuthorizer', {
+      cognitoUserPools: [props.userPool],
+      identitySource: 'method.request.header.Authorization',
     });
 
     const apiResource = this.api.root.addResource('api');
@@ -149,11 +147,13 @@ export class ApiComputeStack extends cdk.Stack {
     const taxDatesResource = v1Resource.addResource('tax-dates');
 
     taxDatesResource.addMethod('GET', new apigateway.LambdaIntegration(this.apiHandlerFunction), {
-      authorizer,
+      authorizer: apiKeyAuthorizer,
       requestParameters: {
         'method.request.querystring.country': true,
         'method.request.querystring.year': true,
         'method.request.querystring.type': false,
+        'method.request.querystring.state': false,
+        'method.request.querystring.agency': false,
       },
       requestValidatorOptions: {
         requestValidatorName: 'ValidateQueryParams',
@@ -165,11 +165,11 @@ export class ApiComputeStack extends cdk.Stack {
     const dashboardIntegration = new apigateway.LambdaIntegration(this.dashboardFunction);
 
     dashboardResource.addResource('keys').addMethod('GET', dashboardIntegration, {
-      authorizationType: apigateway.AuthorizationType.IAM,
+      authorizer: cognitoAuthorizer,
     });
 
     dashboardResource.addResource('generate-key').addMethod('POST', dashboardIntegration, {
-      authorizationType: apigateway.AuthorizationType.IAM,
+      authorizer: cognitoAuthorizer,
     });
 
     const usagePlan = this.api.addUsagePlan('BasicUsagePlan', {

@@ -1,12 +1,10 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
-import { CognitoIdentityProviderClient, GetUserCommand } from '@aws-sdk/client-cognito-identity-provider';
 import { nanoid } from 'nanoid';
 
 const ddbClient = new DynamoDBClient({ region: process.env.AWS_REGION });
 const docClient = DynamoDBDocumentClient.from(ddbClient);
-const cognitoClient = new CognitoIdentityProviderClient({ region: process.env.AWS_REGION });
 
 const API_KEYS_TABLE = process.env.API_KEYS_TABLE!;
 
@@ -19,9 +17,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   };
 
   try {
-    const accessToken = event.headers.Authorization?.replace('Bearer ', '');
+    // When using Cognito authorizer, claims are in requestContext.authorizer.claims
+    const claims = event.requestContext.authorizer?.claims;
     
-    if (!accessToken) {
+    if (!claims) {
       return {
         statusCode: 401,
         headers,
@@ -29,14 +28,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       };
     }
 
-    const getUserResponse = await cognitoClient.send(
-      new GetUserCommand({
-        AccessToken: accessToken,
-      })
-    );
-
-    const userId = getUserResponse.Username!;
-    const email = getUserResponse.UserAttributes?.find(attr => attr.Name === 'email')?.Value;
+    const userId = claims.sub || claims['cognito:username'];
+    const email = claims.email;
 
     if (event.httpMethod === 'POST' && event.path === '/dashboard/generate-key') {
       const apiKey = `txs_live_${nanoid(32)}`;
