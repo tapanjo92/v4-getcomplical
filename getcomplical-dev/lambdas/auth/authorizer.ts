@@ -12,7 +12,7 @@ export const handler = async (event: APIGatewayTokenAuthorizerEvent): Promise<AP
 
   const apiKey = event.authorizationToken?.replace('Bearer ', '');
 
-  if (!apiKey || !apiKey.startsWith('txs_')) {
+  if (!apiKey || !apiKey.startsWith('gc_live_')) {
     throw new Error('Unauthorized');
   }
 

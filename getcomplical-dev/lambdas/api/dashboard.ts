@@ -32,7 +32,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const email = claims.email;
 
     if (event.httpMethod === 'POST' && event.path === '/dashboard/generate-key') {
-      const apiKey = `txs_live_${nanoid(32)}`;
+      const apiKey = `gc_live_${nanoid(32)}`;
       const now = new Date().toISOString();
 
       await docClient.send(

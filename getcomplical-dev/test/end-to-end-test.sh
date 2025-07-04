@@ -106,6 +106,7 @@ if [ -z "$API_KEY" ] || [ "$API_KEY" == "null" ]; then
 fi
 
 echo "Generated API Key: $API_KEY"
+echo "Key format: gc_live_<32 random characters>"
 
 # Step 6: List API keys
 echo "6. Listing API keys..."
