@@ -82,6 +82,19 @@ export class ApiComputeStack extends cdk.Stack {
     props.apiKeysTable.grantReadWriteData(this.dashboardFunction);
     props.taxDataTable.grantReadData(this.apiHandlerFunction);
 
+    // Grant CloudWatch permissions for metrics
+    this.apiHandlerFunction.addToRolePolicy(new iam.PolicyStatement({
+      actions: [
+        'cloudwatch:PutMetricData',
+      ],
+      resources: ['*'],
+      conditions: {
+        StringEquals: {
+          'cloudwatch:namespace': 'GetComplical/API',
+        },
+      },
+    }));
+
     this.dashboardFunction.addToRolePolicy(new iam.PolicyStatement({
       actions: ['cognito-idp:GetUser'],
       resources: [props.userPool.userPoolArn],

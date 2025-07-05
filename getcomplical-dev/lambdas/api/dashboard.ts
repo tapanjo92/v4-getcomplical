@@ -17,10 +17,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   };
 
   try {
-    // When using Cognito authorizer, claims are in requestContext.authorizer.claims
-    const claims = event.requestContext.authorizer?.claims;
+    // When using Cognito authorizer with API Gateway REST API, claims are at the root of authorizer object
+    const authorizer = event.requestContext.authorizer;
     
-    if (!claims) {
+    if (!authorizer) {
       return {
         statusCode: 401,
         headers,
@@ -28,8 +28,15 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       };
     }
 
-    const userId = claims.sub || claims['cognito:username'];
+    // In REST API with Cognito authorizer, claims are nested under 'claims' property
+    console.log('Full authorizer object:', JSON.stringify(authorizer, null, 2));
+    
+    const claims = authorizer.claims || authorizer;
+    const userId = claims.sub || claims['cognito:username'] || claims.principalId;
     const email = claims.email;
+    
+    console.log('Extracted userId:', userId);
+    console.log('Extracted email:', email);
 
     if (event.httpMethod === 'POST' && event.path === '/dashboard/generate-key') {
       const apiKey = `gc_live_${nanoid(32)}`;
