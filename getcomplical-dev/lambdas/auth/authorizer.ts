@@ -8,8 +8,7 @@ const docClient = DynamoDBDocumentClient.from(ddbClient);
 const API_KEYS_TABLE = process.env.API_KEYS_TABLE!;
 
 export const handler = async (event: APIGatewayTokenAuthorizerEvent): Promise<APIGatewayAuthorizerResult> => {
-  console.log('Authorizer event:', JSON.stringify(event, null, 2));
-
+  // Security: Never log authorization tokens or API keys
   const apiKey = event.authorizationToken?.replace('Bearer ', '');
 
   if (!apiKey || !apiKey.startsWith('gc_live_')) {

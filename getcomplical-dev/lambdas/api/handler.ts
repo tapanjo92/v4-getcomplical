@@ -125,6 +125,26 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return errorResponse;
     }
 
+    // Security: Validate year parameter to prevent invalid queries
+    const yearNum = parseInt(year, 10);
+    if (isNaN(yearNum) || yearNum < 2020 || yearNum > 2030) {
+      const errorResponse = {
+        statusCode: 400,
+        headers: {
+          ...baseHeaders,
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        },
+        body: JSON.stringify({
+          error: 'Year must be between 2020 and 2030',
+        }),
+      };
+
+      await sendMetrics('invalid', Date.now() - startTime, 0, 'no-cache', 400);
+      return errorResponse;
+    }
+
     const countryUpper = country.toUpperCase();
     if (!['AU', 'NZ'].includes(countryUpper)) {
       const errorResponse = {

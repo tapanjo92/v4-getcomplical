@@ -9,7 +9,7 @@ const docClient = DynamoDBDocumentClient.from(ddbClient);
 const API_KEYS_TABLE = process.env.API_KEYS_TABLE!;
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  console.log('Dashboard event:', JSON.stringify(event, null, 2));
+  // Security: Never log full event objects that may contain auth tokens
 
   const headers = {
     'Content-Type': 'application/json',
@@ -29,14 +29,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     // In REST API with Cognito authorizer, claims are nested under 'claims' property
-    console.log('Full authorizer object:', JSON.stringify(authorizer, null, 2));
-    
     const claims = authorizer.claims || authorizer;
     const userId = claims.sub || claims['cognito:username'] || claims.principalId;
     const email = claims.email;
-    
-    console.log('Extracted userId:', userId);
-    console.log('Extracted email:', email);
 
     if (event.httpMethod === 'POST' && event.path === '/dashboard/generate-key') {
       const apiKey = `gc_live_${nanoid(32)}`;
