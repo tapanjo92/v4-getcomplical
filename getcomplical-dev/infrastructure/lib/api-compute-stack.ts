@@ -190,6 +190,10 @@ export class ApiComputeStack extends cdk.Stack {
       authorizer: cognitoAuthorizer,
     });
 
+    dashboardResource.addResource('tiers').addMethod('GET', dashboardIntegration, {
+      authorizer: cognitoAuthorizer,
+    });
+
     const usagePlan = this.api.addUsagePlan('BasicUsagePlan', {
       name: 'Basic',
       description: 'Basic usage plan with 1000 requests per day',

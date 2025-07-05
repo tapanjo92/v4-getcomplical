@@ -3,6 +3,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, QueryCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
 import { nanoid } from 'nanoid';
 import { RateLimiter } from '../auth/rate-limiter';
+import { getTierConfig, TIER_CONFIGS } from '../shared/tier-config';
 
 const ddbClient = new DynamoDBClient({ region: process.env.AWS_REGION });
 const docClient = DynamoDBDocumentClient.from(ddbClient);
@@ -38,6 +39,19 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const email = claims.email;
 
     if (event.httpMethod === 'POST' && event.path === '/dashboard/generate-key') {
+      const body = event.body ? JSON.parse(event.body) : {};
+      const requestedTier = body.tier || 'free';
+      
+      // Validate tier exists
+      if (!TIER_CONFIGS[requestedTier]) {
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({ error: 'Invalid tier specified' }),
+        };
+      }
+      
+      const tierConfig = getTierConfig(requestedTier);
       const apiKey = `gc_live_${nanoid(32)}`;
       const now = new Date().toISOString();
 
@@ -49,12 +63,15 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             userId,
             email,
             status: 'active',
-            tier: 'free',
-            dailyLimit: 1000,
+            tier: requestedTier,
+            dailyLimit: tierConfig.dailyLimit,
+            rateLimit: tierConfig.rateLimit,
+            burstLimit: tierConfig.burstLimit,
             usageToday: 0,
             totalUsage: 0,
             createdAt: now,
             lastUsedDate: null,
+            description: body.description || `${tierConfig.name} API Key`,
           },
         })
       );
@@ -65,8 +82,11 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         body: JSON.stringify({
           apiKey,
           createdAt: now,
-          tier: 'free',
-          dailyLimit: 1000,
+          tier: requestedTier,
+          tierName: tierConfig.name,
+          dailyLimit: tierConfig.dailyLimit,
+          rateLimit: tierConfig.rateLimit,
+          features: tierConfig.features,
         }),
       };
     }
@@ -87,13 +107,18 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       const keysWithStats = await Promise.all(
         Items.map(async (item) => {
           const stats = await rateLimiter.getUsageStats(item.apiKey);
+          const tierConfig = getTierConfig(item.tier);
           return {
             apiKey: item.apiKey,
+            description: item.description,
             status: item.status,
             tier: item.tier,
-            dailyLimit: item.dailyLimit,
+            tierName: tierConfig.name,
+            dailyLimit: item.dailyLimit || tierConfig.dailyLimit,
+            rateLimit: item.rateLimit || tierConfig.rateLimit,
             usageToday: stats.last24Hours, // Rolling 24-hour window
             usageLastHour: stats.lastHour,
+            usagePercentage: Math.round((stats.last24Hours / (item.dailyLimit || tierConfig.dailyLimit)) * 100),
             totalUsage: item.totalUsage,
             createdAt: item.createdAt,
             lastUsedDate: item.lastUsedDate,
@@ -145,6 +170,29 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             dailyLimit: Item.dailyLimit,
             tier: Item.tier,
           },
+        }),
+      };
+    }
+
+    // New endpoint to list available tiers
+    if (event.httpMethod === 'GET' && event.path === '/dashboard/tiers') {
+      const tiers = Object.entries(TIER_CONFIGS).map(([key, config]) => ({
+        id: key,
+        name: config.name,
+        dailyLimit: config.dailyLimit === -1 ? 'Unlimited' : config.dailyLimit.toLocaleString(),
+        rateLimit: `${config.rateLimit} requests/second`,
+        burstLimit: config.burstLimit,
+        price: config.price === -1 ? 'Contact us' : `$${config.price}/month`,
+        features: config.features,
+        popular: key === 'pro', // Mark pro as most popular
+      }));
+
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          tiers,
+          currentUserTier: 'free', // TODO: Get from user profile
         }),
       };
     }

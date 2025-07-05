@@ -2,6 +2,7 @@ import { APIGatewayTokenAuthorizerEvent, APIGatewayAuthorizerResult } from 'aws-
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand } from '@aws-sdk/lib-dynamodb';
 import { RateLimiter } from './rate-limiter';
+import { getTierConfig } from '../shared/tier-config';
 
 const ddbClient = new DynamoDBClient({ region: process.env.AWS_REGION });
 const docClient = DynamoDBDocumentClient.from(ddbClient);
@@ -32,10 +33,13 @@ export const handler = async (event: APIGatewayTokenAuthorizerEvent): Promise<AP
       throw new Error('Unauthorized');
     }
 
+    // Get tier configuration for defaults
+    const tierConfig = getTierConfig(Item.tier);
+    
     // Check rate limit with new sharded approach
     const rateLimitResult = await rateLimiter.checkAndUpdateLimit(
       apiKey,
-      Item.dailyLimit || 1000,
+      Item.dailyLimit || tierConfig.dailyLimit,
       Item.tier || 'free'
     );
 
@@ -56,11 +60,14 @@ export const handler = async (event: APIGatewayTokenAuthorizerEvent): Promise<AP
     const policy = generatePolicy(Item.userId, 'Allow', event.methodArn);
     policy.context = {
       userId: Item.userId,
-      tier: Item.tier,
+      tier: Item.tier || 'free',
+      tierName: tierConfig.name,
       apiKey: apiKey,
       currentUsage: rateLimitResult.currentUsage.toString(),
       dailyLimit: rateLimitResult.limit.toString(),
+      remainingRequests: (rateLimitResult.limit - rateLimitResult.currentUsage).toString(),
       resetsAt: rateLimitResult.resetsAt.toISOString(),
+      rateLimit: (Item.rateLimit || tierConfig.rateLimit).toString(),
     };
 
     return policy;

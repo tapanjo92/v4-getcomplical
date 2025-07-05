@@ -95,6 +95,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   // Check if this is a CloudFront cache hit (won't reach Lambda)
   const isCacheHit = event.headers['X-Cache-Status'] === 'HIT';
 
+  // Extract rate limit info from authorizer context
+  const authContext = event.requestContext.authorizer || {};
+  
   const baseHeaders = {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
@@ -102,6 +105,11 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     'X-Frame-Options': 'DENY',
     'X-XSS-Protection': '1; mode=block',
     'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+    // Add rate limit headers
+    'X-RateLimit-Limit': authContext.dailyLimit || '1000',
+    'X-RateLimit-Remaining': authContext.remainingRequests || '0',
+    'X-RateLimit-Reset': authContext.resetsAt || new Date(Date.now() + 86400000).toISOString(),
+    'X-RateLimit-Tier': authContext.tier || 'free',
   };
 
   try {
