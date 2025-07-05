@@ -5,6 +5,7 @@ import { Construct } from 'constructs';
 export class StorageStack extends cdk.Stack {
   public readonly apiKeysTable: dynamodb.Table;
   public readonly taxDataTable: dynamodb.Table;
+  public readonly rateLimitTable: dynamodb.Table;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -67,6 +68,23 @@ export class StorageStack extends cdk.Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
+    // New table for sharded rate limiting with rolling windows
+    this.rateLimitTable = new dynamodb.Table(this, 'RateLimitTable', {
+      tableName: 'getcomplical-rate-limits',
+      partitionKey: {
+        name: 'pk', // Format: apiKey#shard#0-9
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'timestamp',
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      timeToLiveAttribute: 'ttl',
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
     new cdk.CfnOutput(this, 'ApiKeysTableName', {
       value: this.apiKeysTable.tableName,
       description: 'Name of the API Keys DynamoDB table',
@@ -75,6 +93,11 @@ export class StorageStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'TaxDataTableName', {
       value: this.taxDataTable.tableName,
       description: 'Name of the Tax Data DynamoDB table',
+    });
+
+    new cdk.CfnOutput(this, 'RateLimitTableName', {
+      value: this.rateLimitTable.tableName,
+      description: 'Name of the Rate Limit DynamoDB table',
     });
   }
 }

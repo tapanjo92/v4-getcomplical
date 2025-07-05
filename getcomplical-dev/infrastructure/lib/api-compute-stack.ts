@@ -12,6 +12,7 @@ interface ApiComputeStackProps extends cdk.StackProps {
   userPool: cognito.UserPool;
   apiKeysTable: dynamodb.Table;
   taxDataTable: dynamodb.Table;
+  rateLimitTable: dynamodb.Table;
 }
 
 export class ApiComputeStack extends cdk.Stack {
@@ -31,6 +32,7 @@ export class ApiComputeStack extends cdk.Stack {
       handler: 'handler',
       environment: {
         API_KEYS_TABLE: props.apiKeysTable.tableName,
+        RATE_LIMIT_TABLE: props.rateLimitTable.tableName,
       },
       timeout: cdk.Duration.seconds(30),
       memorySize: 256,
@@ -65,6 +67,7 @@ export class ApiComputeStack extends cdk.Stack {
       handler: 'handler',
       environment: {
         API_KEYS_TABLE: props.apiKeysTable.tableName,
+        RATE_LIMIT_TABLE: props.rateLimitTable.tableName,
         USER_POOL_ID: props.userPool.userPoolId,
       },
       timeout: cdk.Duration.seconds(30),
@@ -81,6 +84,8 @@ export class ApiComputeStack extends cdk.Stack {
     props.apiKeysTable.grantReadWriteData(this.authorizerFunction);
     props.apiKeysTable.grantReadWriteData(this.dashboardFunction);
     props.taxDataTable.grantReadData(this.apiHandlerFunction);
+    props.rateLimitTable.grantReadWriteData(this.authorizerFunction);
+    props.rateLimitTable.grantReadData(this.dashboardFunction);
 
     // Grant CloudWatch permissions for metrics
     this.apiHandlerFunction.addToRolePolicy(new iam.PolicyStatement({

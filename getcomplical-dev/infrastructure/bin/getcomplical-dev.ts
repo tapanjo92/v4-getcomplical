@@ -29,6 +29,7 @@ const apiComputeStack = new ApiComputeStack(app, 'GetComplicalApiComputeStack', 
   userPool: authStack.userPool,
   apiKeysTable: storageStack.apiKeysTable,
   taxDataTable: storageStack.taxDataTable,
+  rateLimitTable: storageStack.rateLimitTable,
   description: 'API Gateway and Lambda functions for GetComplical',
 });
 
