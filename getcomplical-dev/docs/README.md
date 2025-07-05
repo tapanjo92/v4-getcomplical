@@ -34,6 +34,35 @@ Step-by-step deployment instructions including:
 - Rollback procedures
 - Security checklist
 
+### 📊 [Data-Loading-Strategy.md](./Data-Loading-Strategy.md)
+Data management documentation including:
+- DynamoDB schema design
+- Data loading processes
+- Performance optimization
+- Cost analysis
+
+### ⚡ [Caching-Strategy.md](./Caching-Strategy.md)
+Comprehensive caching documentation including:
+- Multi-layer cache architecture
+- TTL strategies for different query types
+- Cache invalidation procedures
+- Performance metrics and monitoring
+- Cost optimization analysis
+
+### 📈 [CloudWatch-Metrics-Guide.md](./cloudwatch-metrics-guide.md)
+Monitoring guide including:
+- Key metrics to track
+- Alert thresholds
+- Dashboard navigation
+- Troubleshooting performance issues
+
+### 🏗️ [Architecture-Review-Guide.md](./architect-review-guide.md)
+Presentation guide for architecture reviews including:
+- Executive summary template
+- Key architectural decisions
+- Security and scalability talking points
+- Demo flow and Q&A preparation
+
 ## Quick Links
 
 ### For Developers
@@ -44,10 +73,14 @@ Step-by-step deployment instructions including:
 ### For DevOps
 - [Deployment Steps](./Deployment-Guide.md#deployment-steps)
 - [Monitoring Setup](./MVP-Architecture.md#monitoring--observability)
+- [CloudWatch Dashboards](./CloudWatch-Metrics-Guide.md)
+- [Caching Configuration](./Caching-Strategy.md#cache-layers)
 - [Troubleshooting](./Deployment-Guide.md#troubleshooting)
 
 ### For Architects
 - [System Architecture](./MVP-Architecture.md#architecture-components)
+- [Architecture Review Guide](./Architecture-Review-Guide.md)
+- [Caching Strategy](./Caching-Strategy.md)
 - [Security Model](./MVP-Architecture.md#security-model)
 - [Scalability Plans](./MVP-Architecture.md#scalability-considerations)
 

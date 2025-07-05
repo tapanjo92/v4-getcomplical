@@ -5,3 +5,4 @@ cdk.out
 dist
 .env
 *.log
+CLAUDE.MD
