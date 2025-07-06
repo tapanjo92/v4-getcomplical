@@ -80,6 +80,9 @@ export class StorageStack extends cdk.Stack {
         type: dynamodb.AttributeType.STRING,
       },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: true,
+      },
       timeToLiveAttribute: 'ttl',
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
       removalPolicy: cdk.RemovalPolicy.RETAIN,

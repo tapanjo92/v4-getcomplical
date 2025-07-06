@@ -255,7 +255,7 @@ cdk destroy GetComplicalWafStack
 ## Implementation Files
 
 ### Stack Locations
-- WAF Stack: `/infrastructure/lib/waf-stack-simple.ts`
+- WAF Stack: `/infrastructure/lib/waf-stack.ts`
 - CDN Integration: `/infrastructure/lib/cdn-stack.ts`
 - Monitoring: `/infrastructure/lib/monitoring-stack.ts`
 - Main App: `/infrastructure/bin/getcomplical-dev.ts`

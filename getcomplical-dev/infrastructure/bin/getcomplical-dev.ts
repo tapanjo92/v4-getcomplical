@@ -6,7 +6,9 @@ import { StorageStack } from '../lib/storage-stack';
 import { ApiComputeStack } from '../lib/api-compute-stack';
 import { CdnStack } from '../lib/cdn-stack';
 import { MonitoringStack } from '../lib/monitoring-stack';
-import { WafStack } from '../lib/waf-stack-simple';
+import { WafStack } from '../lib/waf-stack';
+import { SecretsStack } from '../lib/secrets-stack';
+import { BackupStack } from '../lib/backup-stack';
 
 const app = new cdk.App();
 
@@ -14,6 +16,11 @@ const env = {
   account: process.env.CDK_DEFAULT_ACCOUNT,
   region: 'ap-south-1',
 };
+
+const secretsStack = new SecretsStack(app, 'GetComplicalSecretsStack', {
+  env,
+  description: 'Secrets management for GetComplical Tax API',
+});
 
 const authStack = new AuthStack(app, 'GetComplicalAuthStack', {
   env,
@@ -64,6 +71,14 @@ const monitoringStack = new MonitoringStack(app, 'GetComplicalMonitoringStack', 
     apiComputeStack.dashboardFunction,
   ],
   description: 'CloudWatch dashboards and X-Ray configuration',
+});
+
+const backupStack = new BackupStack(app, 'GetComplicalBackupStack', {
+  env,
+  apiKeysTable: storageStack.apiKeysTable,
+  taxDataTable: storageStack.taxDataTable,
+  userPool: authStack.userPool,
+  description: 'Automated backup and restore for DynamoDB tables',
 });
 
 app.synth();

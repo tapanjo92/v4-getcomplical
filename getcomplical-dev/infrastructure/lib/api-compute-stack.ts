@@ -5,6 +5,7 @@ import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Construct } from 'constructs';
 import * as path from 'path';
 
@@ -21,6 +22,7 @@ export class ApiComputeStack extends cdk.Stack {
   public readonly apiHandlerFunction: NodejsFunction;
   public readonly dashboardFunction: NodejsFunction;
   public readonly dataLoaderFunction: NodejsFunction;
+  public readonly healthFunction: NodejsFunction;
 
   constructor(scope: Construct, id: string, props: ApiComputeStackProps) {
     super(scope, id, props);
@@ -80,12 +82,56 @@ export class ApiComputeStack extends cdk.Stack {
       },
     });
 
+    // Create health check function
+    this.healthFunction = new NodejsFunction(this, 'HealthFunction', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      entry: path.join(__dirname, '../../lambdas/api/health.ts'),
+      handler: 'handler',
+      environment: {
+        API_KEYS_TABLE: props.apiKeysTable.tableName,
+        TAX_DATA_TABLE: props.taxDataTable.tableName,
+        RATE_LIMIT_TABLE: props.rateLimitTable.tableName,
+        HEALTH_CHECK_KEY: 'will-be-set-by-secret',
+        API_VERSION: '1.0.0',
+      },
+      timeout: cdk.Duration.seconds(10),
+      memorySize: 256,
+      tracing: lambda.Tracing.ACTIVE,
+      bundling: {
+        minify: true,
+        target: 'node20',
+        sourceMap: true,
+      },
+    });
+
     // Grant permissions
     props.apiKeysTable.grantReadWriteData(this.authorizerFunction);
     props.apiKeysTable.grantReadWriteData(this.dashboardFunction);
     props.taxDataTable.grantReadData(this.apiHandlerFunction);
     props.rateLimitTable.grantReadWriteData(this.authorizerFunction);
     props.rateLimitTable.grantReadData(this.dashboardFunction);
+    
+    // Grant permissions for health check function
+    props.apiKeysTable.grantReadData(this.healthFunction);
+    props.taxDataTable.grantReadData(this.healthFunction);
+    props.rateLimitTable.grantReadData(this.healthFunction);
+    
+    // Grant CloudWatch permissions for health check
+    this.healthFunction.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['cloudwatch:GetMetricStatistics'],
+      resources: ['*'],
+    }));
+    
+    // Grant access to health check secret
+    const healthCheckSecret = secretsmanager.Secret.fromSecretNameV2(
+      this, 
+      'HealthCheckSecret',
+      'getcomplical/health-check-key'
+    );
+    healthCheckSecret.grantRead(this.healthFunction);
+    
+    // Add secret as environment variable
+    this.healthFunction.addEnvironment('HEALTH_CHECK_SECRET_ARN', healthCheckSecret.secretArn);
 
     // Grant CloudWatch permissions for metrics
     this.apiHandlerFunction.addToRolePolicy(new iam.PolicyStatement({
@@ -192,6 +238,25 @@ export class ApiComputeStack extends cdk.Stack {
 
     dashboardResource.addResource('tiers').addMethod('GET', dashboardIntegration, {
       authorizer: cognitoAuthorizer,
+    });
+    
+    // Add health check endpoint
+    const healthResource = this.api.root.addResource('health');
+    healthResource.addMethod('GET', new apigateway.LambdaIntegration(this.healthFunction), {
+      requestParameters: {
+        'method.request.querystring.deep': false,
+      },
+      methodResponses: [{
+        statusCode: '200',
+        responseParameters: {
+          'method.response.header.X-Health-Status': true,
+        },
+      }, {
+        statusCode: '503',
+        responseParameters: {
+          'method.response.header.X-Health-Status': true,
+        },
+      }],
     });
 
     const usagePlan = this.api.addUsagePlan('BasicUsagePlan', {
