@@ -1,0 +1,8 @@
+{
+  "name": "redis-layer",
+  "version": "1.0.0",
+  "description": "Redis client layer for Lambda functions",
+  "dependencies": {
+    "ioredis": "^5.3.2"
+  }
+}

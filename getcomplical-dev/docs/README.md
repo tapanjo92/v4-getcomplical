@@ -1,122 +1,92 @@
 # GetComplical Documentation
 
-Welcome to the GetComplical Tax API documentation. This directory contains comprehensive documentation for deploying, using, and maintaining the GetComplical tax calendar API service.
+Welcome to the GetComplical Tax API documentation. GetComplical is a serverless tax calendar API service for Australia and New Zealand, providing businesses with reliable access to tax compliance dates and deadlines.
 
-## Documentation Structure
+## 📚 Documentation
 
-### 📋 [MVP-Architecture.md](./MVP-Architecture.md)
-Complete technical architecture documentation including:
-- System overview and components
-- AWS service configurations
-- Data models and schemas
-- Security architecture
-- Cost analysis
-- Scalability considerations
-- Future roadmap
+### Core Documentation
 
-### 🔌 [API-Reference.md](./API-Reference.md)
-Detailed API documentation including:
-- Authentication methods
-- All API endpoints with examples
-- Request/response formats
-- Error codes and handling
-- Rate limiting details
-- SDK examples in multiple languages
-- CORS and caching policies
+- **[API-Reference.md](./API-Reference.md)** - API endpoints, authentication, and usage examples
+- **[MVP-Architecture.md](./MVP-Architecture.md)** - System architecture and design decisions
+- **[Deployment-Guide.md](./Deployment-Guide.md)** - Step-by-step deployment instructions
+- **[production-deployment-test-results.md](./production-deployment-test-results.md)** - Latest deployment test results
 
-### 🚀 [Deployment-Guide.md](./Deployment-Guide.md)
-Step-by-step deployment instructions including:
-- Prerequisites and setup
-- CDK deployment procedures
-- Post-deployment configuration
-- Environment-specific deployments
-- Monitoring and troubleshooting
-- Rollback procedures
-- Security checklist
+### Operational Guides
 
-### 📊 [Data-Loading-Strategy.md](./Data-Loading-Strategy.md)
-Data management documentation including:
-- DynamoDB schema design
-- Data loading processes
-- Performance optimization
-- Cost analysis
+- **[Data-Loading-Strategy.md](./Data-Loading-Strategy.md)** - Tax data management procedures
+- **[Caching-Strategy.md](./Caching-Strategy.md)** - Performance optimization via caching
+- **[cloudwatch-metrics-guide.md](./cloudwatch-metrics-guide.md)** - Monitoring and alerts
+- **[Usage-Plan-Migration.md](./Usage-Plan-Migration.md)** - Tier migration procedures
 
-### ⚡ [Caching-Strategy.md](./Caching-Strategy.md)
-Comprehensive caching documentation including:
-- Multi-layer cache architecture
-- TTL strategies for different query types
-- Cache invalidation procedures
-- Performance metrics and monitoring
-- Cost optimization analysis
+### Security & Compliance
 
-### 📈 [CloudWatch-Metrics-Guide.md](./cloudwatch-metrics-guide.md)
-Monitoring guide including:
-- Key metrics to track
-- Alert thresholds
-- Dashboard navigation
-- Troubleshooting performance issues
+- **[Security-Features.md](./Security-Features.md)** - All security & reliability features implemented
+- **[waf-deployment-guide.md](./waf-deployment-guide.md)** - WAF configuration and rules
 
-### 🏗️ [Architecture-Review-Guide.md](./architect-review-guide.md)
-Presentation guide for architecture reviews including:
-- Executive summary template
-- Key architectural decisions
-- Security and scalability talking points
-- Demo flow and Q&A preparation
+## 🚀 Quick Start
 
-## Quick Links
+1. **Deploy the Infrastructure**
+   ```bash
+   npm install
+   npm run build
+   npm run deploy
+   ```
 
-### For Developers
-- [API Authentication](./API-Reference.md#authentication)
-- [Example API Calls](./API-Reference.md#sdk-examples)
-- [Error Handling](./API-Reference.md#error-responses)
+2. **Generate an API Key**
+   - Sign up via Cognito
+   - Access dashboard to generate API key
+   - Use key with `X-Api-Key` header
 
-### For DevOps
-- [Deployment Steps](./Deployment-Guide.md#deployment-steps)
-- [Monitoring Setup](./MVP-Architecture.md#monitoring--observability)
-- [CloudWatch Dashboards](./CloudWatch-Metrics-Guide.md)
-- [Caching Configuration](./Caching-Strategy.md#cache-layers)
-- [Troubleshooting](./Deployment-Guide.md#troubleshooting)
+3. **Make Your First API Call**
+   ```bash
+   curl -H "X-Api-Key: gc_live_your_key" \
+     "https://api.getcomplical.com/api/v1/tax-dates?country=AU&year=2024"
+   ```
 
-### For Architects
-- [System Architecture](./MVP-Architecture.md#architecture-components)
-- [Architecture Review Guide](./Architecture-Review-Guide.md)
-- [Caching Strategy](./Caching-Strategy.md)
-- [Security Model](./MVP-Architecture.md#security-model)
-- [Scalability Plans](./MVP-Architecture.md#scalability-considerations)
+## 🔑 Key Features
 
-## Key Features
+- **🌏 Global CDN** - CloudFront distribution for low latency
+- **🔐 Secure API Keys** - Usage tracking and tier-based limits
+- **📊 Real-time Monitoring** - CloudWatch dashboards and alerts
+- **🚦 Rate Limiting** - Configurable limits per tier (1K/day free, 10K/day pro, 100K/day enterprise)
+- **💰 Cost-Optimized** - Serverless architecture scales to zero
+- **🛡️ Enterprise Security** - WAF, PITR, automated backups, Secrets Manager
 
-- 🔐 **Secure API key management** with usage tracking
-- 🌏 **Global CDN distribution** via CloudFront
-- 📊 **Real-time monitoring** with CloudWatch dashboards
-- 🚦 **Rate limiting** per API key
-- 🏗️ **Infrastructure as Code** using AWS CDK v2
-- 💰 **Cost-optimized** serverless architecture
+## 📈 Current Implementation Status
 
-## Technology Stack
+### ✅ Production Ready
+- Tax calendar API for AU/NZ (2024-2026 data)
+- API key authentication with usage tracking
+- CloudFront CDN with intelligent caching
+- WAF protection with rate limiting and security rules
+- DynamoDB with PITR and automated S3 backups
+- Health check endpoints with monitoring
+- Usage analytics and dashboard API
+- Webhook handlers for billing (Stripe/Paddle)
 
-- **Runtime**: Node.js 20.x
-- **IaC**: AWS CDK v2 (TypeScript)
-- **API**: REST with API Gateway
-- **Auth**: AWS Cognito + Custom Lambda Authorizer
-- **Database**: DynamoDB
-- **CDN**: CloudFront
+### 🚧 Coming Soon
+- Additional countries (UK, US, CA)
+- GraphQL API
+- SDK libraries (Python, Go, Java)
+- Advanced analytics dashboard UI
+- Multi-region deployment
+
+## 🏗️ Technology Stack
+
+- **Infrastructure**: AWS CDK v2 (TypeScript)
+- **Runtime**: Node.js 20.x on AWS Lambda
+- **API**: REST API via API Gateway
+- **Authentication**: AWS Cognito + Custom Authorizer
+- **Database**: DynamoDB with on-demand scaling
+- **CDN**: CloudFront with intelligent caching
 - **Monitoring**: CloudWatch + X-Ray
 
-## Getting Started
+## 📞 Support
 
-1. **Development Setup**: See [Prerequisites](./Deployment-Guide.md#prerequisites)
-2. **Deploy MVP**: Follow the [Deployment Guide](./Deployment-Guide.md#deployment-steps)
-3. **Test API**: Use the [API Reference](./API-Reference.md#endpoints)
-4. **Monitor**: Check [CloudWatch Dashboards](./MVP-Architecture.md#monitoring--observability)
+- **Technical Issues**: Create a GitHub issue
+- **API Support**: support@getcomplical.com
+- **Security**: security@getcomplical.com
 
-## Support
-
-For questions or issues:
-- Technical issues: Create a GitHub issue
-- API support: support@getcomplical.com
-- Security concerns: security@getcomplical.com
-
-## License
+## 📄 License
 
 Copyright (c) 2024 GetComplical. All rights reserved.
