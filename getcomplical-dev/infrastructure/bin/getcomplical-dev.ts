@@ -9,6 +9,7 @@ import { MonitoringStack } from '../lib/monitoring-stack';
 import { WafStack } from '../lib/waf-stack';
 import { SecretsStack } from '../lib/secrets-stack';
 import { BackupStack } from '../lib/backup-stack';
+import { BillingStack } from '../lib/billing-stack';
 
 const app = new cdk.App();
 
@@ -32,12 +33,26 @@ const storageStack = new StorageStack(app, 'GetComplicalStorageStack', {
   description: 'DynamoDB tables for tax data and API key management',
 });
 
+// Create billing stack first to get the Lambda functions
+const billingStack = new BillingStack(app, 'GetComplicalBillingStack', {
+  env,
+  apiKeysTable: storageStack.apiKeysTable,
+  usageMetricsTable: storageStack.usageMetricsTable,
+  stripeWebhookSecret: secretsStack.stripeWebhookSecret,
+  paddleWebhookSecret: secretsStack.paddleWebhookSecret,
+  description: 'Billing, usage monitoring, and payment webhook handling',
+});
+
 const apiComputeStack = new ApiComputeStack(app, 'GetComplicalApiComputeStack', {
   env,
   userPool: authStack.userPool,
   apiKeysTable: storageStack.apiKeysTable,
   taxDataTable: storageStack.taxDataTable,
   rateLimitTable: storageStack.rateLimitTable,
+  usageMetricsTable: storageStack.usageMetricsTable,
+  billingWebhookFunction: billingStack.billingWebhookFunction,
+  usageAggregatorFunction: billingStack.usageAggregatorFunction,
+  usageMonitorFunction: billingStack.usageMonitorFunction,
   description: 'API Gateway and Lambda functions for GetComplical',
 });
 

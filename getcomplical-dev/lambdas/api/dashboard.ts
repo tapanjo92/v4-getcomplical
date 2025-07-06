@@ -10,6 +10,7 @@ const docClient = DynamoDBDocumentClient.from(ddbClient);
 
 const API_KEYS_TABLE = process.env.API_KEYS_TABLE!;
 const RATE_LIMIT_TABLE = process.env.RATE_LIMIT_TABLE!;
+const USAGE_METRICS_TABLE = process.env.USAGE_METRICS_TABLE!;
 
 const rateLimiter = new RateLimiter(docClient, RATE_LIMIT_TABLE);
 
@@ -193,6 +194,206 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         body: JSON.stringify({
           tiers,
           currentUserTier: 'free', // TODO: Get from user profile
+        }),
+      };
+    }
+
+    // Enhanced usage endpoint - monthly summary
+    if (event.httpMethod === 'GET' && event.path === '/dashboard/usage/monthly') {
+      const queryParams = event.queryStringParameters || {};
+      const month = queryParams.month || new Date().toISOString().substring(0, 7); // Default to current month
+      
+      // Get all API keys for user
+      const { Items: userKeys } = await docClient.send(
+        new QueryCommand({
+          TableName: API_KEYS_TABLE,
+          IndexName: 'userId-index',
+          KeyConditionExpression: 'userId = :userId',
+          ExpressionAttributeValues: {
+            ':userId': userId,
+          },
+        })
+      );
+      
+      if (!userKeys || userKeys.length === 0) {
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            month,
+            totalRequests: 0,
+            apiKeys: [],
+          }),
+        };
+      }
+      
+      // Get monthly usage for each API key
+      const monthlyUsage = await Promise.all(
+        userKeys.map(async (key) => {
+          const response = await docClient.send(
+            new QueryCommand({
+              TableName: USAGE_METRICS_TABLE,
+              KeyConditionExpression: 'pk = :pk AND sk = :sk',
+              ExpressionAttributeValues: {
+                ':pk': `usage#${key.apiKey}`,
+                ':sk': `${month}#monthly`,
+              },
+            })
+          );
+          
+          const monthlyData = response.Items?.[0];
+          const tierConfig = getTierConfig(key.tier);
+          
+          return {
+            apiKey: key.apiKey,
+            description: key.description,
+            tier: key.tier,
+            monthlyLimit: tierConfig.dailyLimit === -1 ? -1 : tierConfig.dailyLimit * 30,
+            totalRequests: monthlyData?.totalRequests || 0,
+            dailyBreakdown: monthlyData?.dailyBreakdown || {},
+            endpointBreakdown: monthlyData?.endpointBreakdown || {},
+            peakDay: monthlyData?.peakDay || { date: 'N/A', requests: 0 },
+            averageDaily: monthlyData?.averageDaily || 0,
+            usagePercentage: tierConfig.dailyLimit === -1 
+              ? 0 
+              : Math.round(((monthlyData?.totalRequests || 0) / (tierConfig.dailyLimit * 30)) * 100),
+          };
+        })
+      );
+      
+      const totalRequests = monthlyUsage.reduce((sum, usage) => sum + usage.totalRequests, 0);
+      
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          month,
+          totalRequests,
+          apiKeys: monthlyUsage,
+        }),
+      };
+    }
+    
+    // Daily usage endpoint
+    if (event.httpMethod === 'GET' && event.path === '/dashboard/usage/daily') {
+      const queryParams = event.queryStringParameters || {};
+      const startDate = queryParams.startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const endDate = queryParams.endDate || new Date().toISOString().split('T')[0];
+      const apiKey = queryParams.apiKey;
+      
+      if (apiKey) {
+        // Verify API key belongs to user
+        const { Item } = await docClient.send(
+          new GetCommand({
+            TableName: API_KEYS_TABLE,
+            Key: { apiKey },
+          })
+        );
+        
+        if (!Item || Item.userId !== userId) {
+          return {
+            statusCode: 403,
+            headers,
+            body: JSON.stringify({ error: 'Access denied' }),
+          };
+        }
+        
+        // Get daily usage data
+        const response = await docClient.send(
+          new QueryCommand({
+            TableName: USAGE_METRICS_TABLE,
+            KeyConditionExpression: 'pk = :pk AND sk BETWEEN :skStart AND :skEnd',
+            ExpressionAttributeValues: {
+              ':pk': `usage#${apiKey}`,
+              ':skStart': `${startDate.substring(0, 7)}#daily#${startDate}`,
+              ':skEnd': `${endDate.substring(0, 7)}#daily#${endDate}`,
+            },
+          })
+        );
+        
+        const dailyData = response.Items?.map(item => ({
+          date: item.date,
+          requests: item.totalRequests,
+          endpoints: item.endpoints,
+        })) || [];
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            apiKey,
+            startDate,
+            endDate,
+            dailyUsage: dailyData,
+            total: dailyData.reduce((sum, day) => sum + day.requests, 0),
+          }),
+        };
+      }
+      
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ error: 'API key parameter required' }),
+      };
+    }
+    
+    // Real-time usage endpoint (last 24 hours by hour)
+    if (event.httpMethod === 'GET' && event.path === '/dashboard/usage/realtime') {
+      const apiKey = event.queryStringParameters?.apiKey;
+      
+      if (!apiKey) {
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({ error: 'API key parameter required' }),
+        };
+      }
+      
+      // Verify API key belongs to user
+      const { Item } = await docClient.send(
+        new GetCommand({
+          TableName: API_KEYS_TABLE,
+          Key: { apiKey },
+        })
+      );
+      
+      if (!Item || Item.userId !== userId) {
+        return {
+          statusCode: 403,
+          headers,
+          body: JSON.stringify({ error: 'Access denied' }),
+        };
+      }
+      
+      // Get last 24 hours of hourly data
+      const now = new Date();
+      const monthStr = now.toISOString().substring(0, 7);
+      const response = await docClient.send(
+        new QueryCommand({
+          TableName: USAGE_METRICS_TABLE,
+          KeyConditionExpression: 'pk = :pk AND begins_with(sk, :skPrefix)',
+          ExpressionAttributeValues: {
+            ':pk': `usage#${apiKey}`,
+            ':skPrefix': `${monthStr}#hourly#`,
+          },
+          ScanIndexForward: false, // Most recent first
+          Limit: 24, // Last 24 hours
+        })
+      );
+      
+      const hourlyData = response.Items?.map(item => ({
+        hour: item.hour,
+        requests: item.totalRequests,
+        endpoints: item.endpoints,
+      })) || [];
+      
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          apiKey,
+          hourlyUsage: hourlyData.reverse(), // Chronological order
+          total24Hours: hourlyData.reduce((sum, hour) => sum + hour.requests, 0),
         }),
       };
     }

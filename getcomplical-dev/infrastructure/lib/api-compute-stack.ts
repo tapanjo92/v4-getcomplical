@@ -14,6 +14,10 @@ interface ApiComputeStackProps extends cdk.StackProps {
   apiKeysTable: dynamodb.Table;
   taxDataTable: dynamodb.Table;
   rateLimitTable: dynamodb.Table;
+  usageMetricsTable: dynamodb.Table;
+  billingWebhookFunction?: lambda.Function;
+  usageAggregatorFunction?: lambda.Function;
+  usageMonitorFunction?: lambda.Function;
 }
 
 export class ApiComputeStack extends cdk.Stack {
@@ -35,6 +39,7 @@ export class ApiComputeStack extends cdk.Stack {
       environment: {
         API_KEYS_TABLE: props.apiKeysTable.tableName,
         RATE_LIMIT_TABLE: props.rateLimitTable.tableName,
+        USAGE_METRICS_TABLE: props.usageMetricsTable.tableName,
       },
       timeout: cdk.Duration.seconds(30),
       memorySize: 256,
@@ -70,6 +75,7 @@ export class ApiComputeStack extends cdk.Stack {
       environment: {
         API_KEYS_TABLE: props.apiKeysTable.tableName,
         RATE_LIMIT_TABLE: props.rateLimitTable.tableName,
+        USAGE_METRICS_TABLE: props.usageMetricsTable.tableName,
         USER_POOL_ID: props.userPool.userPoolId,
       },
       timeout: cdk.Duration.seconds(30),
@@ -110,6 +116,8 @@ export class ApiComputeStack extends cdk.Stack {
     props.taxDataTable.grantReadData(this.apiHandlerFunction);
     props.rateLimitTable.grantReadWriteData(this.authorizerFunction);
     props.rateLimitTable.grantReadData(this.dashboardFunction);
+    props.usageMetricsTable.grantReadWriteData(this.authorizerFunction);
+    props.usageMetricsTable.grantReadData(this.dashboardFunction);
     
     // Grant permissions for health check function
     props.apiKeysTable.grantReadData(this.healthFunction);
@@ -240,6 +248,32 @@ export class ApiComputeStack extends cdk.Stack {
       authorizer: cognitoAuthorizer,
     });
     
+    // Add usage endpoints
+    const usageResource = dashboardResource.addResource('usage');
+    
+    usageResource.addResource('monthly').addMethod('GET', dashboardIntegration, {
+      authorizer: cognitoAuthorizer,
+      requestParameters: {
+        'method.request.querystring.month': false,
+      },
+    });
+    
+    usageResource.addResource('daily').addMethod('GET', dashboardIntegration, {
+      authorizer: cognitoAuthorizer,
+      requestParameters: {
+        'method.request.querystring.apiKey': true,
+        'method.request.querystring.startDate': false,
+        'method.request.querystring.endDate': false,
+      },
+    });
+    
+    usageResource.addResource('realtime').addMethod('GET', dashboardIntegration, {
+      authorizer: cognitoAuthorizer,
+      requestParameters: {
+        'method.request.querystring.apiKey': true,
+      },
+    });
+    
     // Add health check endpoint
     const healthResource = this.api.root.addResource('health');
     healthResource.addMethod('GET', new apigateway.LambdaIntegration(this.healthFunction), {
@@ -276,6 +310,73 @@ export class ApiComputeStack extends cdk.Stack {
       stage: this.api.deploymentStage,
     });
 
+    // Add webhook endpoints if billing functions are provided
+    if (props.billingWebhookFunction) {
+      const webhooksResource = this.api.root.addResource('webhooks');
+      
+      webhooksResource.addResource('stripe').addMethod('POST', 
+        new apigateway.LambdaIntegration(props.billingWebhookFunction),
+        {
+          methodResponses: [{
+            statusCode: '200',
+          }, {
+            statusCode: '400',
+          }],
+        }
+      );
+      
+      webhooksResource.addResource('paddle').addMethod('POST', 
+        new apigateway.LambdaIntegration(props.billingWebhookFunction),
+        {
+          methodResponses: [{
+            statusCode: '200',
+          }, {
+            statusCode: '400',
+          }],
+        }
+      );
+    }
+    
+    // Add admin endpoints if monitoring functions are provided
+    if (props.usageAggregatorFunction && props.usageMonitorFunction) {
+      const adminResource = this.api.root.addResource('admin');
+      
+      adminResource.addResource('trigger-aggregation').addMethod('POST',
+        new apigateway.LambdaIntegration(props.usageAggregatorFunction),
+        {
+          apiKeyRequired: true,
+        }
+      );
+      
+      adminResource.addResource('trigger-monitoring').addMethod('POST',
+        new apigateway.LambdaIntegration(props.usageMonitorFunction),
+        {
+          apiKeyRequired: true,
+        }
+      );
+      
+      // Create API key for admin access
+      const adminApiKey = this.api.addApiKey('AdminApiKey', {
+        apiKeyName: 'getcomplical-admin-key',
+        description: 'API key for admin endpoints',
+      });
+      
+      const adminUsagePlan = this.api.addUsagePlan('AdminUsagePlan', {
+        name: 'Admin',
+        description: 'Usage plan for admin endpoints',
+        apiStages: [{
+          api: this.api,
+          stage: this.api.deploymentStage,
+        }],
+        throttle: {
+          rateLimit: 10,
+          burstLimit: 20,
+        },
+      });
+      
+      adminUsagePlan.addApiKey(adminApiKey);
+    }
+
     new cdk.CfnOutput(this, 'ApiUrl', {
       value: this.api.url,
       description: 'API Gateway URL',
@@ -285,5 +386,17 @@ export class ApiComputeStack extends cdk.Stack {
       value: this.dataLoaderFunction.functionName,
       description: 'Data Loader Lambda function name',
     });
+    
+    if (props.billingWebhookFunction) {
+      new cdk.CfnOutput(this, 'StripeWebhookUrl', {
+        value: `${this.api.url}webhooks/stripe`,
+        description: 'Webhook URL for Stripe',
+      });
+      
+      new cdk.CfnOutput(this, 'PaddleWebhookUrl', {
+        value: `${this.api.url}webhooks/paddle`,
+        description: 'Webhook URL for Paddle',
+      });
+    }
   }
 }

@@ -6,6 +6,8 @@ import { Construct } from 'constructs';
 export class SecretsStack extends cdk.Stack {
   public readonly healthCheckKeySecret: secretsmanager.Secret;
   public readonly apiConfigSecret: secretsmanager.Secret;
+  public readonly stripeWebhookSecret: secretsmanager.Secret;
+  public readonly paddleWebhookSecret: secretsmanager.Secret;
   
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -49,6 +51,25 @@ export class SecretsStack extends cdk.Stack {
     this.healthCheckKeySecret.grantRead(rotationRole);
     this.healthCheckKeySecret.grantWrite(rotationRole);
     
+    // Create billing webhook secrets
+    this.stripeWebhookSecret = new secretsmanager.Secret(this, 'StripeWebhookSecret', {
+      secretName: 'getcomplical/stripe-webhook-secret',
+      description: 'Stripe webhook endpoint secret for signature verification',
+      secretObjectValue: {
+        webhookSecret: cdk.SecretValue.unsafePlainText('whsec_placeholder_update_in_console'),
+        apiKey: cdk.SecretValue.unsafePlainText('sk_test_placeholder'),
+      },
+    });
+    
+    this.paddleWebhookSecret = new secretsmanager.Secret(this, 'PaddleWebhookSecret', {
+      secretName: 'getcomplical/paddle-webhook-secret',
+      description: 'Paddle webhook verification secret',
+      secretObjectValue: {
+        webhookSecret: cdk.SecretValue.unsafePlainText('pdl_webhook_placeholder_update_in_console'),
+        apiKey: cdk.SecretValue.unsafePlainText('pdl_test_placeholder'),
+      },
+    });
+    
     // Outputs
     new cdk.CfnOutput(this, 'HealthCheckKeySecretArn', {
       value: this.healthCheckKeySecret.secretArn,
@@ -60,6 +81,16 @@ export class SecretsStack extends cdk.Stack {
       value: this.apiConfigSecret.secretArn,
       description: 'ARN of the API configuration secret',
       exportName: 'GetComplicalApiConfigSecretArn',
+    });
+    
+    new cdk.CfnOutput(this, 'StripeWebhookSecretArn', {
+      value: this.stripeWebhookSecret.secretArn,
+      description: 'ARN of the Stripe webhook secret',
+    });
+    
+    new cdk.CfnOutput(this, 'PaddleWebhookSecretArn', {
+      value: this.paddleWebhookSecret.secretArn,
+      description: 'ARN of the Paddle webhook secret',
     });
   }
 }
