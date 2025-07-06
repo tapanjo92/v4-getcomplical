@@ -7,6 +7,7 @@ import { Construct } from 'constructs';
 
 interface CdnStackProps extends cdk.StackProps {
   apiGateway: apigateway.RestApi;
+  webAclArn?: string; // Optional WAF Web ACL ARN
 }
 
 export class CdnStack extends cdk.Stack {
@@ -134,6 +135,8 @@ export class CdnStack extends cdk.Stack {
       logBucket: logBucket,
       logFilePrefix: 'cloudfront-logs/',
       logIncludesCookies: false,
+      // Attach WAF Web ACL if provided
+      webAclId: props.webAclArn,
     });
 
     new cdk.CfnOutput(this, 'DistributionDomainName', {

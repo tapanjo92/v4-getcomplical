@@ -320,6 +320,192 @@ export class MonitoringStack extends cdk.Stack {
       })
     );
 
+    // WAF Security Monitoring
+    dashboard.addWidgets(
+      new cloudwatch.GraphWidget({
+        title: 'WAF Blocked Requests by Rule',
+        left: [
+          new cloudwatch.Metric({
+            namespace: 'AWS/WAFV2',
+            metricName: 'BlockedRequests',
+            dimensionsMap: {
+              Rule: 'IPRateLimit',
+              WebACL: 'GetComplicalAPIProtection',
+              Region: 'Global',
+            },
+            statistic: 'Sum',
+            label: 'IP Rate Limit',
+          }),
+          new cloudwatch.Metric({
+            namespace: 'AWS/WAFV2',
+            metricName: 'BlockedRequests',
+            dimensionsMap: {
+              Rule: 'GeoWhitelist',
+              WebACL: 'GetComplicalAPIProtection',
+              Region: 'Global',
+            },
+            statistic: 'Sum',
+            label: 'Geo Blocking',
+          }),
+          new cloudwatch.Metric({
+            namespace: 'AWS/WAFV2',
+            metricName: 'BlockedRequests',
+            dimensionsMap: {
+              Rule: 'SQLiProtection',
+              WebACL: 'GetComplicalAPIProtection',
+              Region: 'Global',
+            },
+            statistic: 'Sum',
+            label: 'SQL Injection',
+          }),
+          new cloudwatch.Metric({
+            namespace: 'AWS/WAFV2',
+            metricName: 'BlockedRequests',
+            dimensionsMap: {
+              Rule: 'APIKeyValidation',
+              WebACL: 'GetComplicalAPIProtection',
+              Region: 'Global',
+            },
+            statistic: 'Sum',
+            label: 'Invalid API Key',
+          }),
+        ],
+        width: 12,
+        height: 6,
+        stacked: true,
+        leftYAxis: {
+          label: 'Blocked Requests',
+          showUnits: false,
+        },
+      }),
+      new cloudwatch.GraphWidget({
+        title: 'WAF Request Analysis',
+        left: [
+          new cloudwatch.Metric({
+            namespace: 'AWS/WAFV2',
+            metricName: 'AllowedRequests',
+            dimensionsMap: {
+              Rule: 'ALL',
+              WebACL: 'GetComplicalAPIProtection',
+              Region: 'Global',
+            },
+            statistic: 'Sum',
+            label: 'Allowed',
+            color: cloudwatch.Color.GREEN,
+          }),
+          new cloudwatch.Metric({
+            namespace: 'AWS/WAFV2',
+            metricName: 'BlockedRequests',
+            dimensionsMap: {
+              Rule: 'ALL',
+              WebACL: 'GetComplicalAPIProtection',
+              Region: 'Global',
+            },
+            statistic: 'Sum',
+            label: 'Blocked',
+            color: cloudwatch.Color.RED,
+          }),
+        ],
+        width: 12,
+        height: 6,
+        leftYAxis: {
+          label: 'Requests',
+          showUnits: false,
+        },
+      })
+    );
+
+    // WAF Top Threats
+    dashboard.addWidgets(
+      new cloudwatch.SingleValueWidget({
+        title: 'WAF Block Rate',
+        metrics: [
+          new cloudwatch.MathExpression({
+            expression: '(blocked / (blocked + allowed)) * 100',
+            usingMetrics: {
+              blocked: new cloudwatch.Metric({
+                namespace: 'AWS/WAFV2',
+                metricName: 'BlockedRequests',
+                dimensionsMap: {
+                  Rule: 'ALL',
+                  WebACL: 'GetComplicalAPIProtection',
+                  Region: 'Global',
+                },
+                statistic: 'Sum',
+              }),
+              allowed: new cloudwatch.Metric({
+                namespace: 'AWS/WAFV2',
+                metricName: 'AllowedRequests',
+                dimensionsMap: {
+                  Rule: 'ALL',
+                  WebACL: 'GetComplicalAPIProtection',
+                  Region: 'Global',
+                },
+                statistic: 'Sum',
+              }),
+            },
+            label: 'Block Rate %',
+          }),
+        ],
+        width: 6,
+        height: 4,
+      }),
+      new cloudwatch.SingleValueWidget({
+        title: 'Total Blocked (24h)',
+        metrics: [
+          new cloudwatch.Metric({
+            namespace: 'AWS/WAFV2',
+            metricName: 'BlockedRequests',
+            dimensionsMap: {
+              Rule: 'ALL',
+              WebACL: 'GetComplicalAPIProtection',
+              Region: 'Global',
+            },
+            statistic: 'Sum',
+            period: cdk.Duration.hours(24),
+          }),
+        ],
+        width: 6,
+        height: 4,
+      }),
+      new cloudwatch.SingleValueWidget({
+        title: 'Active Rate Limits',
+        metrics: [
+          new cloudwatch.Metric({
+            namespace: 'AWS/WAFV2',
+            metricName: 'BlockedRequests',
+            dimensionsMap: {
+              Rule: 'IPRateLimit',
+              WebACL: 'GetComplicalAPIProtection',
+              Region: 'Global',
+            },
+            statistic: 'Sum',
+            period: cdk.Duration.minutes(5),
+          }),
+        ],
+        width: 6,
+        height: 4,
+      }),
+      new cloudwatch.SingleValueWidget({
+        title: 'Geo Blocks (24h)',
+        metrics: [
+          new cloudwatch.Metric({
+            namespace: 'AWS/WAFV2',
+            metricName: 'BlockedRequests',
+            dimensionsMap: {
+              Rule: 'GeoWhitelist',
+              WebACL: 'GetComplicalAPIProtection',
+              Region: 'Global',
+            },
+            statistic: 'Sum',
+            period: cdk.Duration.hours(24),
+          }),
+        ],
+        width: 6,
+        height: 4,
+      })
+    );
+
     // Create Alarms
     new cloudwatch.Alarm(this, 'ApiErrorAlarm', {
       metric: new cloudwatch.Metric({
