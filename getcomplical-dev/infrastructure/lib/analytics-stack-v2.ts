@@ -5,65 +5,50 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as events from 'aws-cdk-lib/aws-events';
 import * as targets from 'aws-cdk-lib/aws-events-targets';
 import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 
-interface AnalyticsStackProps extends cdk.StackProps {
-  analyticsBucket: s3.Bucket;
-  firehoseStreamName: string;
-}
+export class AnalyticsStackV2 extends cdk.Stack {
+  public readonly aggregationTable: dynamodb.ITable;
+  public readonly alertsTable: dynamodb.ITable;
 
-export class AnalyticsStack extends cdk.Stack {
-  public readonly aggregationTable: dynamodb.Table;
-  public readonly alertsTable: dynamodb.Table;
-
-  constructor(scope: Construct, id: string, props: AnalyticsStackProps) {
+  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // Create DynamoDB table for aggregated metrics
-    this.aggregationTable = new dynamodb.Table(this, 'AggregatedMetrics', {
-      tableName: 'getcomplical-aggregated-metrics',
-      partitionKey: {
-        name: 'pk',
-        type: dynamodb.AttributeType.STRING,
-      },
-      sortKey: {
-        name: 'sk',
-        type: dynamodb.AttributeType.STRING,
-      },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      timeToLiveAttribute: 'ttl',
-      pointInTimeRecovery: true,
-    });
+    // Look up resources from SSM Parameters
+    const analyticsBucketName = ssm.StringParameter.valueForStringParameter(
+      this, '/getcomplical/infrastructure/s3/analytics-bucket'
+    );
+    
+    const firehoseStreamName = ssm.StringParameter.valueForStringParameter(
+      this, '/getcomplical/infrastructure/kinesis/firehose-stream-name'
+    );
 
-    // Add GSI for customer queries
-    this.aggregationTable.addGlobalSecondaryIndex({
-      indexName: 'customer-index',
-      partitionKey: {
-        name: 'customerId',
-        type: dynamodb.AttributeType.STRING,
-      },
-      sortKey: {
-        name: 'timestamp',
-        type: dynamodb.AttributeType.STRING,
-      },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
+    // Import the analytics bucket
+    const analyticsBucket = s3.Bucket.fromBucketName(
+      this, 'AnalyticsBucket', analyticsBucketName
+    );
 
-    // Create table for usage alerts
-    this.alertsTable = new dynamodb.Table(this, 'UsageAlerts', {
-      tableName: 'getcomplical-usage-alerts',
-      partitionKey: {
-        name: 'customerId',
-        type: dynamodb.AttributeType.STRING,
-      },
-      sortKey: {
-        name: 'alertId',
-        type: dynamodb.AttributeType.STRING,
-      },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      timeToLiveAttribute: 'ttl',
-      stream: dynamodb.StreamViewType.NEW_AND_OLD_IMAGES,
-    });
+    // Import existing aggregated metrics table
+    // If the table doesn't exist, the stack will fail and you'll need to create it
+    this.aggregationTable = dynamodb.Table.fromTableName(
+      this, 
+      'AggregatedMetrics', 
+      'getcomplical-aggregated-metrics'
+    );
+
+    // Import existing usage alerts table with stream
+    // Note: The stream ARN includes a timestamp, so we need the actual ARN
+    const alertsTableStreamArn = 'arn:aws:dynamodb:ap-south-1:809555764832:table/getcomplical-usage-alerts/stream/2025-07-06T21:57:10.972';
+    
+    this.alertsTable = dynamodb.Table.fromTableAttributes(
+      this, 
+      'UsageAlerts', 
+      {
+        tableName: 'getcomplical-usage-alerts',
+        tableStreamArn: alertsTableStreamArn,
+      }
+    );
 
     // Create Lambda for hourly aggregation
     const aggregationLambda = new lambda.Function(this, 'AggregationFunction', {
@@ -225,7 +210,7 @@ async function checkUsageAlerts(customerId, tier, requestCount, errorRate) {
       environment: {
         AGGREGATION_TABLE: this.aggregationTable.tableName,
         ALERTS_TABLE: this.alertsTable.tableName,
-        ANALYTICS_BUCKET: props.analyticsBucket.bucketName,
+        ANALYTICS_BUCKET: analyticsBucketName,
       },
       timeout: cdk.Duration.minutes(5),
       memorySize: 512,
@@ -234,7 +219,7 @@ async function checkUsageAlerts(customerId, tier, requestCount, errorRate) {
     // Grant permissions
     this.aggregationTable.grantWriteData(aggregationLambda);
     this.alertsTable.grantWriteData(aggregationLambda);
-    props.analyticsBucket.grantRead(aggregationLambda);
+    analyticsBucket.grantRead(aggregationLambda);
 
     // Grant Athena permissions
     aggregationLambda.addToRolePolicy(new iam.PolicyStatement({

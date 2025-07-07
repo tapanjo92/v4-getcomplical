@@ -1,5 +1,6 @@
 import * as cdk from 'aws-cdk-lib';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 
 export class StorageStack extends cdk.Stack {
@@ -103,6 +104,44 @@ export class StorageStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
+    // Export table names and ARNs to SSM Parameters
+    new ssm.StringParameter(this, 'ApiKeysTableNameParam', {
+      parameterName: '/getcomplical/tables/api-keys/name',
+      stringValue: this.apiKeysTable.tableName,
+      description: 'Name of the API Keys DynamoDB table',
+    });
+
+    new ssm.StringParameter(this, 'ApiKeysTableArnParam', {
+      parameterName: '/getcomplical/tables/api-keys/arn',
+      stringValue: this.apiKeysTable.tableArn,
+      description: 'ARN of the API Keys DynamoDB table',
+    });
+
+    new ssm.StringParameter(this, 'TaxDataTableNameParam', {
+      parameterName: '/getcomplical/tables/tax-data/name',
+      stringValue: this.taxDataTable.tableName,
+      description: 'Name of the Tax Data DynamoDB table',
+    });
+
+    new ssm.StringParameter(this, 'TaxDataTableArnParam', {
+      parameterName: '/getcomplical/tables/tax-data/arn',
+      stringValue: this.taxDataTable.tableArn,
+      description: 'ARN of the Tax Data DynamoDB table',
+    });
+
+    new ssm.StringParameter(this, 'RateLimitTableNameParam', {
+      parameterName: '/getcomplical/tables/rate-limit/name',
+      stringValue: this.rateLimitTable.tableName,
+      description: 'Name of the Rate Limit DynamoDB table',
+    });
+
+    new ssm.StringParameter(this, 'RateLimitTableArnParam', {
+      parameterName: '/getcomplical/tables/rate-limit/arn',
+      stringValue: this.rateLimitTable.tableArn,
+      description: 'ARN of the Rate Limit DynamoDB table',
+    });
+
+    // Keep outputs for visibility
     new cdk.CfnOutput(this, 'ApiKeysTableName', {
       value: this.apiKeysTable.tableName,
       description: 'Name of the API Keys DynamoDB table',
@@ -166,6 +205,19 @@ export class StorageStack extends cdk.Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
     
+    // Export usage metrics table to SSM
+    new ssm.StringParameter(this, 'UsageMetricsTableNameParam', {
+      parameterName: '/getcomplical/tables/usage-metrics/name',
+      stringValue: this.usageMetricsTable.tableName,
+      description: 'Name of the Usage Metrics DynamoDB table',
+    });
+
+    new ssm.StringParameter(this, 'UsageMetricsTableArnParam', {
+      parameterName: '/getcomplical/tables/usage-metrics/arn',
+      stringValue: this.usageMetricsTable.tableArn,
+      description: 'ARN of the Usage Metrics DynamoDB table',
+    });
+
     new cdk.CfnOutput(this, 'UsageMetricsTableName', {
       value: this.usageMetricsTable.tableName,
       description: 'Name of the Usage Metrics DynamoDB table',

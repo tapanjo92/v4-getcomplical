@@ -1,6 +1,7 @@
 import * as cdk from 'aws-cdk-lib';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 
 export class SecretsStack extends cdk.Stack {
@@ -70,17 +71,64 @@ export class SecretsStack extends cdk.Stack {
       },
     });
     
-    // Outputs
+    // Export to SSM Parameters for decoupled access
+    new ssm.StringParameter(this, 'HealthCheckKeySecretNameParam', {
+      parameterName: '/getcomplical/secrets/health-check-key/name',
+      stringValue: this.healthCheckKeySecret.secretName,
+      description: 'Name of the health check key secret',
+    });
+
+    new ssm.StringParameter(this, 'HealthCheckKeySecretArnParam', {
+      parameterName: '/getcomplical/secrets/health-check-key/arn',
+      stringValue: this.healthCheckKeySecret.secretArn,
+      description: 'ARN of the health check key secret',
+    });
+
+    new ssm.StringParameter(this, 'ApiConfigSecretNameParam', {
+      parameterName: '/getcomplical/secrets/api-config/name',
+      stringValue: this.apiConfigSecret.secretName,
+      description: 'Name of the API config secret',
+    });
+
+    new ssm.StringParameter(this, 'ApiConfigSecretArnParam', {
+      parameterName: '/getcomplical/secrets/api-config/arn',
+      stringValue: this.apiConfigSecret.secretArn,
+      description: 'ARN of the API config secret',
+    });
+
+    new ssm.StringParameter(this, 'StripeWebhookSecretNameParam', {
+      parameterName: '/getcomplical/secrets/stripe-webhook/name',
+      stringValue: this.stripeWebhookSecret.secretName,
+      description: 'Name of the Stripe webhook secret',
+    });
+
+    new ssm.StringParameter(this, 'StripeWebhookSecretArnParam', {
+      parameterName: '/getcomplical/secrets/stripe-webhook/arn',
+      stringValue: this.stripeWebhookSecret.secretArn,
+      description: 'ARN of the Stripe webhook secret',
+    });
+
+    new ssm.StringParameter(this, 'PaddleWebhookSecretNameParam', {
+      parameterName: '/getcomplical/secrets/paddle-webhook/name',
+      stringValue: this.paddleWebhookSecret.secretName,
+      description: 'Name of the Paddle webhook secret',
+    });
+
+    new ssm.StringParameter(this, 'PaddleWebhookSecretArnParam', {
+      parameterName: '/getcomplical/secrets/paddle-webhook/arn',
+      stringValue: this.paddleWebhookSecret.secretArn,
+      description: 'ARN of the Paddle webhook secret',
+    });
+
+    // Keep outputs for visibility but remove exports
     new cdk.CfnOutput(this, 'HealthCheckKeySecretArn', {
       value: this.healthCheckKeySecret.secretArn,
       description: 'ARN of the health check key secret',
-      exportName: 'GetComplicalHealthCheckKeySecretArn',
     });
     
     new cdk.CfnOutput(this, 'ApiConfigSecretArn', {
       value: this.apiConfigSecret.secretArn,
       description: 'ARN of the API configuration secret',
-      exportName: 'GetComplicalApiConfigSecretArn',
     });
     
     new cdk.CfnOutput(this, 'StripeWebhookSecretArn', {
@@ -91,6 +139,62 @@ export class SecretsStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'PaddleWebhookSecretArn', {
       value: this.paddleWebhookSecret.secretArn,
       description: 'ARN of the Paddle webhook secret',
+    });
+
+    // CloudFront secret for API Gateway validation
+    const cloudfrontSecret = new secretsmanager.Secret(this, 'CloudFrontSecret', {
+      secretName: 'getcomplical/cloudfront-api-secret',
+      description: 'Secret header value for CloudFront to API Gateway authentication',
+      generateSecretString: {
+        secretStringTemplate: JSON.stringify({}),
+        generateStringKey: 'headerValue',
+        passwordLength: 32,
+        excludeCharacters: ' "\'\\',
+      },
+    });
+
+    // Export CloudFront secret to SSM
+    new ssm.StringParameter(this, 'CloudFrontSecretNameParam', {
+      parameterName: '/getcomplical/secrets/cloudfront-api/name',
+      stringValue: cloudfrontSecret.secretName,
+      description: 'Name of the CloudFront API secret',
+    });
+
+    new ssm.StringParameter(this, 'CloudFrontSecretArnParam', {
+      parameterName: '/getcomplical/secrets/cloudfront-api/arn',
+      stringValue: cloudfrontSecret.secretArn,
+      description: 'ARN of the CloudFront API secret',
+    });
+
+    // Valkey auth token for encryption
+    const valkeyAuthToken = new secretsmanager.Secret(this, 'ValkeyAuthToken', {
+      secretName: 'getcomplical/valkey-auth-token',
+      description: 'Authentication token for Valkey cluster encryption',
+      generateSecretString: {
+        secretStringTemplate: JSON.stringify({}),
+        generateStringKey: 'authToken',
+        passwordLength: 64,
+        excludeCharacters: ' "\'\\@',
+      },
+    });
+
+    // Export Valkey auth token to SSM
+    new ssm.StringParameter(this, 'ValkeyAuthTokenNameParam', {
+      parameterName: '/getcomplical/secrets/valkey-auth/name',
+      stringValue: valkeyAuthToken.secretName,
+      description: 'Name of the Valkey auth token secret',
+    });
+
+    new ssm.StringParameter(this, 'ValkeyAuthTokenArnParam', {
+      parameterName: '/getcomplical/secrets/valkey-auth/arn',
+      stringValue: valkeyAuthToken.secretArn,
+      description: 'ARN of Valkey auth token secret',
+    });
+
+    // Keep output for visibility
+    new cdk.CfnOutput(this, 'ValkeyAuthTokenArn', {
+      value: valkeyAuthToken.secretArn,
+      description: 'ARN of Valkey auth token secret',
     });
   }
 }

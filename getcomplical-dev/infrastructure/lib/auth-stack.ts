@@ -1,5 +1,6 @@
 import * as cdk from 'aws-cdk-lib';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 
 export class AuthStack extends cdk.Stack {
@@ -74,6 +75,26 @@ export class AuthStack extends cdk.Stack {
       refreshTokenValidity: cdk.Duration.days(30),
     });
 
+    // Export to SSM Parameters
+    new ssm.StringParameter(this, 'UserPoolIdParam', {
+      parameterName: '/getcomplical/auth/user-pool/id',
+      stringValue: this.userPool.userPoolId,
+      description: 'Cognito User Pool ID',
+    });
+
+    new ssm.StringParameter(this, 'UserPoolArnParam', {
+      parameterName: '/getcomplical/auth/user-pool/arn',
+      stringValue: this.userPool.userPoolArn,
+      description: 'Cognito User Pool ARN',
+    });
+
+    new ssm.StringParameter(this, 'UserPoolClientIdParam', {
+      parameterName: '/getcomplical/auth/user-pool-client/id',
+      stringValue: this.userPoolClient.userPoolClientId,
+      description: 'Cognito User Pool Client ID',
+    });
+
+    // Keep outputs for visibility
     new cdk.CfnOutput(this, 'UserPoolId', {
       value: this.userPool.userPoolId,
       description: 'Cognito User Pool ID',

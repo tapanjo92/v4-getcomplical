@@ -1,24 +1,53 @@
 import { FirehoseClient, PutRecordCommand } from '@aws-sdk/client-firehose';
+import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
 import Redis from 'ioredis';
 
 const firehoseClient = new FirehoseClient({ region: process.env.AWS_REGION });
+const secretsClient = new SecretsManagerClient({ region: process.env.AWS_REGION });
 let redis: Redis | null = null;
+let valkeyAuthToken: string | null = null;
 
 const FIREHOSE_STREAM_NAME = process.env.FIREHOSE_STREAM_NAME!;
 const REDIS_ENDPOINT = process.env.REDIS_ENDPOINT!;
+const REDIS_TLS_ENABLED = process.env.REDIS_TLS_ENABLED === 'true';
+const VALKEY_AUTH_TOKEN_ARN = process.env.VALKEY_AUTH_TOKEN_ARN!;
+
+// Get Valkey auth token from Secrets Manager
+async function getValkeyAuthToken(): Promise<string> {
+  if (valkeyAuthToken) return valkeyAuthToken;
+  
+  try {
+    const response = await secretsClient.send(
+      new GetSecretValueCommand({ SecretId: VALKEY_AUTH_TOKEN_ARN })
+    );
+    const secret = JSON.parse(response.SecretString!);
+    valkeyAuthToken = secret.authToken;
+    return valkeyAuthToken;
+  } catch (error) {
+    console.error('Failed to retrieve Valkey auth token:', error);
+    throw error;
+  }
+}
 
 // Initialize Redis connection
 async function getRedisClient(): Promise<Redis> {
   if (!redis) {
-    redis = new Redis({
+    const config: any = {
       host: REDIS_ENDPOINT,
       port: 6379,
       maxRetriesPerRequest: 2,
       retryStrategy: (times) => Math.min(times * 50, 500),
       enableReadyCheck: true,
       lazyConnect: true,
-    });
-    
+    };
+
+    // Add TLS and auth if enabled
+    if (REDIS_TLS_ENABLED) {
+      config.tls = {};
+      config.password = await getValkeyAuthToken();
+    }
+
+    redis = new Redis(config);
     await redis.connect();
   }
   return redis;

@@ -8,6 +8,7 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as glue from 'aws-cdk-lib/aws-glue';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 
 export class StreamingStack extends cdk.Stack {
@@ -23,7 +24,7 @@ export class StreamingStack extends cdk.Stack {
     
     // Use a STABLE suffix for resources - this prevents creating new resources on every deployment
     // CRITICAL: This must be stable across deployments to avoid resource churn
-    const uniqueSuffix = 'prod-v2'; // Fixed suffix for production stability
+    const uniqueSuffix = 'prod-v4'; // New suffix for independent stack
 
     // Create VPC for Redis (ElastiCache requires VPC)
     this.vpc = new ec2.Vpc(this, 'StreamingVpc', {
@@ -77,7 +78,8 @@ export class StreamingStack extends cdk.Stack {
       securityGroupIds: [redisSecurityGroup.securityGroupId],
       engineVersion: '7.2',
       automaticFailoverEnabled: false,  // Single node doesn't need failover
-      transitEncryptionEnabled: false,  // Required parameter for Valkey
+      transitEncryptionEnabled: false,  // Disable for now - requires proper auth token setup
+      atRestEncryptionEnabled: true,  // Enable encryption at rest
       preferredMaintenanceWindow: 'sun:05:00-sun:06:00',
       snapshotRetentionLimit: 1,
       snapshotWindow: '03:00-04:00',
@@ -278,10 +280,51 @@ export class StreamingStack extends cdk.Stack {
     // Output Redis endpoint - use PrimaryEndPoint for replication groups
     this.redisEndpoint = cdk.Fn.getAtt(this.redisCluster.logicalId, 'PrimaryEndPoint.Address').toString();
 
+    // Export values to SSM Parameters for decoupled access
+    new ssm.StringParameter(this, 'RedisEndpointParam', {
+      parameterName: '/getcomplical/infrastructure/redis/endpoint',
+      stringValue: this.redisEndpoint,
+      description: 'Valkey cluster endpoint for rate limiting',
+    });
+
+    new ssm.StringParameter(this, 'VpcIdParam', {
+      parameterName: '/getcomplical/infrastructure/vpc/id',
+      stringValue: this.vpc.vpcId,
+      description: 'VPC ID for Lambda functions',
+    });
+
+    new ssm.StringParameter(this, 'FirehoseStreamNameParam', {
+      parameterName: '/getcomplical/infrastructure/kinesis/firehose-stream-name',
+      stringValue: this.firehoseStream.ref,
+      description: 'Kinesis Firehose stream name',
+    });
+
+    new ssm.StringParameter(this, 'AnalyticsBucketNameParam', {
+      parameterName: '/getcomplical/infrastructure/s3/analytics-bucket-name',
+      stringValue: this.analyticsBucket.bucketName,
+      description: 'S3 bucket for analytics data',
+    });
+
+    // Also export VPC subnet IDs for Lambda configuration
+    this.vpc.privateSubnets.forEach((subnet, index) => {
+      new ssm.StringParameter(this, `PrivateSubnet${index}Param`, {
+        parameterName: `/getcomplical/infrastructure/vpc/private-subnet-${index}`,
+        stringValue: subnet.subnetId,
+        description: `Private subnet ${index} ID`,
+      });
+    });
+
+    // Export analytics bucket name to SSM
+    new ssm.StringParameter(this, 'AnalyticsBucketParam', {
+      parameterName: '/getcomplical/infrastructure/s3/analytics-bucket',
+      stringValue: this.analyticsBucket.bucketName,
+      description: 'S3 bucket name for analytics data',
+    });
+
+    // Keep outputs for visibility but remove exports
     new cdk.CfnOutput(this, 'RedisEndpoint', {
       value: this.redisEndpoint,
       description: 'Valkey cluster endpoint for rate limiting',
-      exportName: `${this.stackName}:RedisEndpoint`,
     });
 
     new cdk.CfnOutput(this, 'FirehoseStreamName', {
