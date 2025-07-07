@@ -2,6 +2,7 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { CloudWatchClient, PutMetricDataCommand } from '@aws-sdk/client-cloudwatch';
+import { trackApiUsage } from '../shared/usage-tracker';
 
 const ddbClient = new DynamoDBClient({ region: process.env.AWS_REGION });
 const docClient = DynamoDBDocumentClient.from(ddbClient);
@@ -295,9 +296,22 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       }),
     };
 
-    // Wait for metrics to complete (but with timeout)
+    // Track successful API usage (dual tracking)
+    const trackingPromise = trackApiUsage({
+      apiKey: event.requestContext.authorizer?.apiKey || 'unknown',
+      customerId: event.requestContext.authorizer?.customerId || 'unknown',
+      userId: event.requestContext.authorizer?.userId || 'unknown',
+      tier: event.requestContext.authorizer?.tier || 'unknown',
+      endpoint: event.path,
+      method: event.httpMethod,
+      statusCode: 200,
+      responseTimeMs: totalResponseTime,
+      cacheHit: isCacheHit,
+    });
+
+    // Wait for metrics/tracking to complete (but with timeout)
     await Promise.race([
-      metricsPromise,
+      Promise.all([metricsPromise, trackingPromise]),
       new Promise(resolve => setTimeout(resolve, 100)), // 100ms timeout
     ]);
 
@@ -306,7 +320,24 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     console.error('Error processing request:', error);
     
     const errorTime = Date.now() - startTime;
-    await sendMetrics('error', errorTime, 0, 'no-cache', 500);
+    
+    // Track error (won't count against rate limit)
+    const errorTracking = trackApiUsage({
+      apiKey: event.requestContext.authorizer?.apiKey || 'unknown',
+      customerId: event.requestContext.authorizer?.customerId || 'unknown',
+      userId: event.requestContext.authorizer?.userId || 'unknown',
+      tier: event.requestContext.authorizer?.tier || 'unknown',
+      endpoint: event.path,
+      method: event.httpMethod,
+      statusCode: 500,
+      responseTimeMs: errorTime,
+      errorMessage: error.message || 'Internal server error',
+    });
+    
+    await Promise.race([
+      Promise.all([sendMetrics('error', errorTime, 0, 'no-cache', 500), errorTracking]),
+      new Promise(resolve => setTimeout(resolve, 100)),
+    ]);
 
     return {
       statusCode: 500,

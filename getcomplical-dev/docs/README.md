@@ -7,8 +7,8 @@ Welcome to the GetComplical Tax API documentation. GetComplical is a serverless 
 ### Core Documentation
 
 - **[API-Reference.md](./API-Reference.md)** - API endpoints, authentication, and usage examples
-- **[MVP-Architecture.md](./MVP-Architecture.md)** - System architecture and design decisions
-- **[Deployment-Guide.md](./Deployment-Guide.md)** - Step-by-step deployment instructions
+- **[Current-Architecture.md](./Current-Architecture.md)** - Production architecture with Valkey and private API
+- **[Deployment-Guide-V2.md](./Deployment-Guide-V2.md)** - Step-by-step deployment instructions for current architecture
 - **[production-deployment-test-results.md](./production-deployment-test-results.md)** - Latest deployment test results
 
 ### Operational Guides
@@ -40,7 +40,7 @@ Welcome to the GetComplical Tax API documentation. GetComplical is a serverless 
 3. **Make Your First API Call**
    ```bash
    curl -H "X-Api-Key: gc_live_your_key" \
-     "https://api.getcomplical.com/api/v1/tax-dates?country=AU&year=2024"
+     "https://d2uhe8jerdqq3g.cloudfront.net/api/v1/tax-dates?country=AU&year=2024"
    ```
 
 ## 🔑 Key Features
@@ -75,10 +75,12 @@ Welcome to the GetComplical Tax API documentation. GetComplical is a serverless 
 
 - **Infrastructure**: AWS CDK v2 (TypeScript)
 - **Runtime**: Node.js 20.x on AWS Lambda
-- **API**: REST API via API Gateway
+- **API**: Private REST API via API Gateway
 - **Authentication**: AWS Cognito + Custom Authorizer
 - **Database**: DynamoDB with on-demand scaling
-- **CDN**: CloudFront with intelligent caching
+- **Rate Limiting**: Valkey (Redis-compatible) on ElastiCache
+- **CDN**: CloudFront with intelligent caching + WAF
+- **Analytics**: Kinesis Firehose → S3 (Parquet) → Athena
 - **Monitoring**: CloudWatch + X-Ray
 
 ## 📞 Support

@@ -4,12 +4,15 @@ import * as cdk from 'aws-cdk-lib';
 import { AuthStack } from '../lib/auth-stack';
 import { StorageStack } from '../lib/storage-stack';
 import { ApiComputeStack } from '../lib/api-compute-stack';
+import { ApiComputeStackV2 } from '../lib/api-compute-stack-v2';
 import { CdnStack } from '../lib/cdn-stack';
 import { MonitoringStack } from '../lib/monitoring-stack';
 import { WafStack } from '../lib/waf-stack';
 import { SecretsStack } from '../lib/secrets-stack';
 import { BackupStack } from '../lib/backup-stack';
 import { BillingStack } from '../lib/billing-stack';
+import { StreamingStack } from '../lib/streaming-stack';
+import { AnalyticsStack } from '../lib/analytics-stack';
 
 const app = new cdk.App();
 
@@ -33,6 +36,12 @@ const storageStack = new StorageStack(app, 'GetComplicalStorageStack', {
   description: 'DynamoDB tables for tax data and API key management',
 });
 
+// Create streaming infrastructure for high-performance tracking
+const streamingStack = new StreamingStack(app, 'GetComplicalStreamingStackV2', {
+  env,
+  description: 'Valkey cache and Kinesis Firehose for real-time usage tracking',
+});
+
 // Create billing stack first to get the Lambda functions
 const billingStack = new BillingStack(app, 'GetComplicalBillingStack', {
   env,
@@ -43,18 +52,25 @@ const billingStack = new BillingStack(app, 'GetComplicalBillingStack', {
   description: 'Billing, usage monitoring, and payment webhook handling',
 });
 
-const apiComputeStack = new ApiComputeStack(app, 'GetComplicalApiComputeStack', {
+// Use V2 API stack with Redis and Kinesis
+const apiComputeStack = new ApiComputeStackV2(app, 'GetComplicalApiComputeStack', {
   env,
   userPool: authStack.userPool,
   apiKeysTable: storageStack.apiKeysTable,
   taxDataTable: storageStack.taxDataTable,
   rateLimitTable: storageStack.rateLimitTable,
   usageMetricsTable: storageStack.usageMetricsTable,
+  vpc: streamingStack.vpc,
+  redisEndpoint: cdk.Fn.importValue('GetComplicalStreamingStackV2:RedisEndpoint'),
+  firehoseStreamName: streamingStack.firehoseStream.ref,
   billingWebhookFunction: billingStack.billingWebhookFunction,
   usageAggregatorFunction: billingStack.usageAggregatorFunction,
   usageMonitorFunction: billingStack.usageMonitorFunction,
-  description: 'API Gateway and Lambda functions for GetComplical',
+  description: 'API Gateway v2 with Redis caching and Kinesis streaming',
 });
+
+// Add dependency on streaming stack
+apiComputeStack.addDependency(streamingStack);
 
 // Create WAF stack for CloudFront (must be in us-east-1)
 const wafStack = new WafStack(app, 'GetComplicalWafStack', {
@@ -95,5 +111,16 @@ const backupStack = new BackupStack(app, 'GetComplicalBackupStack', {
   userPool: authStack.userPool,
   description: 'Automated backup and restore for DynamoDB tables',
 });
+
+// Create analytics stack for aggregation and monitoring
+const analyticsStack = new AnalyticsStack(app, 'GetComplicalAnalyticsStack', {
+  env,
+  analyticsBucket: streamingStack.analyticsBucket,
+  firehoseStreamName: streamingStack.firehoseStream.ref,
+  description: 'Real-time analytics and usage aggregation',
+});
+
+// Add dependencies
+analyticsStack.addDependency(streamingStack);
 
 app.synth();

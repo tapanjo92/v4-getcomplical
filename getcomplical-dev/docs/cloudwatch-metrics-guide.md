@@ -34,12 +34,19 @@
 - **Concurrent Executions**: Monitor for throttling
 - **Throttles**: Should be zero
 
-### 4. Query Pattern Analysis (Log Insights)
+### 4. Valkey (ElastiCache) Metrics
+- **CPU Utilization**: Should stay <50% 
+- **Memory Usage**: Monitor for memory pressure
+- **Current Connections**: Track active connections
+- **Cache Hits/Misses**: Should have high hit ratio
+- **Network Throughput**: Monitor bandwidth usage
+
+### 5. Query Pattern Analysis (Log Insights)
 - **Top 10 Query Patterns**: Which filters are most popular
 - **Slowest Queries**: Identify performance bottlenecks
 - **Geographic Distribution**: Where are requests coming from
 
-### 5. Business Metrics
+### 6. Business Metrics
 - **Query Type Distribution**:
   - AU vs NZ queries
   - Base vs filtered queries
