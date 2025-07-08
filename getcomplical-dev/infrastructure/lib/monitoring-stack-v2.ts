@@ -224,6 +224,180 @@ export class MonitoringStackV2 extends cdk.Stack {
       }).addAlarmAction(new cloudwatch_actions.SnsAction(alertTopic));
     });
 
+    // Create CloudWatch Dashboard
+    const dashboard = new cloudwatch.Dashboard(this, 'MonitoringDashboard', {
+      dashboardName: 'GetComplical-Monitoring',
+      defaultInterval: cdk.Duration.hours(3),
+    });
+
+    // API Gateway Metrics Row
+    dashboard.addWidgets(
+      new cloudwatch.GraphWidget({
+        title: 'API Request Count',
+        left: [new cloudwatch.Metric({
+          namespace: 'AWS/ApiGateway',
+          metricName: 'Count',
+          dimensionsMap: { ApiName: 'GetComplical Tax API v3' },
+          statistic: 'Sum',
+        })],
+        width: 8,
+      }),
+      new cloudwatch.GraphWidget({
+        title: 'API Latency',
+        left: [new cloudwatch.Metric({
+          namespace: 'AWS/ApiGateway',
+          metricName: 'Latency',
+          dimensionsMap: { ApiName: 'GetComplical Tax API v3' },
+          statistic: 'Average',
+        })],
+        width: 8,
+      }),
+      new cloudwatch.GraphWidget({
+        title: 'API Errors',
+        left: [
+          new cloudwatch.Metric({
+            namespace: 'AWS/ApiGateway',
+            metricName: '4XXError',
+            dimensionsMap: { ApiName: 'GetComplical Tax API v3' },
+            statistic: 'Sum',
+          }),
+          new cloudwatch.Metric({
+            namespace: 'AWS/ApiGateway',
+            metricName: '5XXError',
+            dimensionsMap: { ApiName: 'GetComplical Tax API v3' },
+            statistic: 'Sum',
+          }),
+        ],
+        width: 8,
+      }),
+    );
+
+    // Lambda Functions Row
+    dashboard.addWidgets(
+      new cloudwatch.GraphWidget({
+        title: 'Lambda Invocations',
+        left: lambdaFunctions.map(({ name, function: fn }) => 
+          fn.metricInvocations({ statistic: 'Sum' })
+        ),
+        width: 12,
+      }),
+      new cloudwatch.GraphWidget({
+        title: 'Lambda Errors',
+        left: lambdaFunctions.map(({ name, function: fn }) => 
+          fn.metricErrors({ statistic: 'Sum' })
+        ),
+        width: 12,
+      }),
+    );
+
+    // Lambda Performance Row
+    dashboard.addWidgets(
+      new cloudwatch.GraphWidget({
+        title: 'Lambda Duration',
+        left: lambdaFunctions.map(({ name, function: fn }) => 
+          fn.metricDuration({ statistic: 'Average' })
+        ),
+        width: 12,
+      }),
+      new cloudwatch.GraphWidget({
+        title: 'Lambda Throttles',
+        left: lambdaFunctions.map(({ name, function: fn }) => 
+          fn.metricThrottles({ statistic: 'Sum' })
+        ),
+        width: 12,
+      }),
+    );
+
+    // Business Metrics Row
+    dashboard.addWidgets(
+      new cloudwatch.GraphWidget({
+        title: 'API Key Operations',
+        left: [
+          new cloudwatch.Metric({
+            namespace: 'GetComplical/Security',
+            metricName: 'APIKeyOperation',
+            dimensionsMap: { Action: 'CREATE_KEY' },
+            statistic: 'Sum',
+          }),
+          new cloudwatch.Metric({
+            namespace: 'GetComplical/Security',
+            metricName: 'APIKeyOperation',
+            dimensionsMap: { Action: 'DELETE_KEY' },
+            statistic: 'Sum',
+          }),
+        ],
+        width: 12,
+      }),
+      new cloudwatch.GraphWidget({
+        title: 'Rate Limit Metrics',
+        left: [
+          new cloudwatch.Metric({
+            namespace: 'GetComplical/API',
+            metricName: 'RateLimitExceeded',
+            statistic: 'Sum',
+          }),
+          new cloudwatch.Metric({
+            namespace: 'GetComplical/API',
+            metricName: 'RequestCount',
+            statistic: 'Sum',
+          }),
+        ],
+        width: 12,
+      }),
+    );
+
+    // Valkey/Redis Row
+    dashboard.addWidgets(
+      new cloudwatch.GraphWidget({
+        title: 'Valkey CPU',
+        left: [new cloudwatch.Metric({
+          namespace: 'AWS/ElastiCache',
+          metricName: 'CPUUtilization',
+          dimensionsMap: { CacheClusterId: clusterId },
+          statistic: 'Average',
+        })],
+        width: 12,
+      }),
+      new cloudwatch.GraphWidget({
+        title: 'Valkey Connections',
+        left: [new cloudwatch.Metric({
+          namespace: 'AWS/ElastiCache',
+          metricName: 'CurrConnections',
+          dimensionsMap: { CacheClusterId: clusterId },
+          statistic: 'Average',
+        })],
+        width: 12,
+      }),
+    );
+
+    // DynamoDB Tables Row
+    dashboard.addWidgets(
+      new cloudwatch.GraphWidget({
+        title: 'DynamoDB Read Capacity',
+        left: tables.map(({ name, id }) => 
+          new cloudwatch.Metric({
+            namespace: 'AWS/DynamoDB',
+            metricName: 'ConsumedReadCapacityUnits',
+            dimensionsMap: { TableName: name },
+            statistic: 'Sum',
+          })
+        ),
+        width: 12,
+      }),
+      new cloudwatch.GraphWidget({
+        title: 'DynamoDB Write Capacity',
+        left: tables.map(({ name, id }) => 
+          new cloudwatch.Metric({
+            namespace: 'AWS/DynamoDB',
+            metricName: 'ConsumedWriteCapacityUnits',
+            dimensionsMap: { TableName: name },
+            statistic: 'Sum',
+          })
+        ),
+        width: 12,
+      }),
+    );
+
     // Export SNS topic ARN to SSM for other stacks to use
     new ssm.StringParameter(this, 'AlertTopicArnParam', {
       parameterName: '/getcomplical/monitoring/alert-topic-arn',
