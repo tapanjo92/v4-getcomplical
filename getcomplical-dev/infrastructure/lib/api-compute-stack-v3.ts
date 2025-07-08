@@ -184,11 +184,12 @@ export class ApiComputeStackV3 extends cdk.Stack {
     this.dashboardFunction = new NodejsFunction(this, 'DashboardFunction', {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'handler',
-      entry: path.join(__dirname, '../../lambdas/api/dashboard.ts'),
+      entry: path.join(__dirname, '../../lambdas/api/dashboard-v2.ts'),
       environment: {
         API_KEYS_TABLE: apiKeysTableName,
         USAGE_METRICS_TABLE: usageMetricsTableName,
         RATE_LIMIT_TABLE: rateLimitTableName,
+        AUDIT_LOG_TABLE: 'getcomplical-audit-logs',
       },
       timeout: cdk.Duration.seconds(10),
       memorySize: 256,
@@ -242,8 +243,23 @@ export class ApiComputeStackV3 extends cdk.Stack {
     apiKeysTable.grantReadWriteData(this.dashboardFunction);
     taxDataTable.grantReadData(this.apiHandlerFunction);
     taxDataTable.grantWriteData(this.dataLoaderFunction);
-    rateLimitTable.grantReadData(this.dashboardFunction);
+    rateLimitTable.grantReadWriteData(this.dashboardFunction); // Need write for rate limiting
     usageMetricsTable.grantReadData(this.dashboardFunction);
+    
+    // Grant audit logs table permissions
+    const auditLogsTableName = ssm.StringParameter.valueForStringParameter(
+      this, '/getcomplical/tables/audit-logs/name'
+    );
+    const auditLogsTable = dynamodb.Table.fromTableName(
+      this, 'AuditLogsTable', auditLogsTableName
+    );
+    auditLogsTable.grantReadWriteData(this.dashboardFunction);
+    
+    // Grant CloudWatch permissions for dashboard metrics
+    this.dashboardFunction.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['cloudwatch:PutMetricData'],
+      resources: ['*'],
+    }));
     
     // Grant Valkey auth token access to API handler
     this.apiHandlerFunction.addToRolePolicy(new iam.PolicyStatement({
@@ -381,8 +397,51 @@ export class ApiComputeStackV3 extends cdk.Stack {
 
     // Add dashboard endpoints
     const dashboardResource = this.api.root.addResource('dashboard');
+    
+    // /dashboard/keys - List and create API keys
     const keysResource = dashboardResource.addResource('keys');
     keysResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.dashboardFunction),
+      {
+        authorizer: cognitoAuthorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+    keysResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(this.dashboardFunction),
+      {
+        authorizer: cognitoAuthorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+    
+    // /dashboard/keys/{apiKey} - Delete/revoke specific key
+    const keyItemResource = keysResource.addResource('{apiKey}');
+    keyItemResource.addMethod(
+      'DELETE',
+      new apigateway.LambdaIntegration(this.dashboardFunction),
+      {
+        authorizer: cognitoAuthorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+    
+    // /dashboard/keys/{apiKey}/rotate - Rotate API key
+    const rotateResource = keyItemResource.addResource('rotate');
+    rotateResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(this.dashboardFunction),
+      {
+        authorizer: cognitoAuthorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+    
+    // /dashboard/audit-logs - Get audit logs
+    const auditLogsResource = dashboardResource.addResource('audit-logs');
+    auditLogsResource.addMethod(
       'GET',
       new apigateway.LambdaIntegration(this.dashboardFunction),
       {

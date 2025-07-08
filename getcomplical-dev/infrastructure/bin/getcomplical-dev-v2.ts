@@ -11,6 +11,7 @@ import { StreamingStack } from '../lib/streaming-stack';
 import { WafStack } from '../lib/waf-stack';
 import { CdnStackV2 } from '../lib/cdn-stack-v2';
 import { AnalyticsStackV2 } from '../lib/analytics-stack-v2';
+import { IamSecurityStack } from '../lib/iam-security-stack';
 
 const app = new cdk.App();
 
@@ -82,6 +83,12 @@ const cdnStack = new CdnStackV2(app, 'GetComplicalCdnStackV2', {
 const analyticsStack = new AnalyticsStackV2(app, 'GetComplicalAnalyticsStackV2', {
   env,
   description: 'Analytics and usage aggregation - Independent with SSM lookups',
+});
+
+// IAM Security stack - manages access policies
+const iamSecurityStack = new IamSecurityStack(app, 'GetComplicalIamSecurityStack', {
+  env,
+  description: 'IAM policies and security controls for API key management',
 });
 
 app.synth();

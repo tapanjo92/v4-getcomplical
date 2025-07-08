@@ -8,6 +8,7 @@ export class StorageStack extends cdk.Stack {
   public readonly taxDataTable: dynamodb.Table;
   public readonly rateLimitTable: dynamodb.Table;
   public readonly usageMetricsTable: dynamodb.Table;
+  public readonly auditLogsTable: dynamodb.Table;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -26,8 +27,22 @@ export class StorageStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
+    // Add GSI for querying by userId (required for dashboard)
     this.apiKeysTable.addGlobalSecondaryIndex({
       indexName: 'userId-index',
+      partitionKey: {
+        name: 'userId',
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'createdAt',
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    this.apiKeysTable.addGlobalSecondaryIndex({
+      indexName: 'customerId-index',
       partitionKey: {
         name: 'userId',
         type: dynamodb.AttributeType.STRING,
@@ -104,6 +119,36 @@ export class StorageStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
+    // Create audit logs table for compliance and security
+    this.auditLogsTable = new dynamodb.Table(this, 'AuditLogsTable', {
+      tableName: 'getcomplical-audit-logs',
+      partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: true,
+      },
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+      timeToLiveAttribute: 'ttl',
+      stream: dynamodb.StreamViewType.NEW_AND_OLD_IMAGES, // For compliance monitoring
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    // Add GSI for querying by userId
+    this.auditLogsTable.addGlobalSecondaryIndex({
+      indexName: 'userId-index',
+      partitionKey: { name: 'userId', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'timestamp', type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // Add GSI for querying by action type
+    this.auditLogsTable.addGlobalSecondaryIndex({
+      indexName: 'action-index',
+      partitionKey: { name: 'action', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'timestamp', type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
     // Export table names and ARNs to SSM Parameters
     new ssm.StringParameter(this, 'ApiKeysTableNameParam', {
       parameterName: '/getcomplical/tables/api-keys/name',
@@ -139,6 +184,18 @@ export class StorageStack extends cdk.Stack {
       parameterName: '/getcomplical/tables/rate-limit/arn',
       stringValue: this.rateLimitTable.tableArn,
       description: 'ARN of the Rate Limit DynamoDB table',
+    });
+
+    new ssm.StringParameter(this, 'AuditLogsTableNameParam', {
+      parameterName: '/getcomplical/tables/audit-logs/name',
+      stringValue: this.auditLogsTable.tableName,
+      description: 'Name of the Audit Logs DynamoDB table',
+    });
+
+    new ssm.StringParameter(this, 'AuditLogsTableArnParam', {
+      parameterName: '/getcomplical/tables/audit-logs/arn',
+      stringValue: this.auditLogsTable.tableArn,
+      description: 'ARN of the Audit Logs DynamoDB table',
     });
 
     // Keep outputs for visibility
