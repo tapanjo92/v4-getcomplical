@@ -117,16 +117,21 @@ export class ApiComputeStackV3 extends cdk.Stack {
     );
 
     // Create authorizer function with Valkey support
+    // Get CloudFront secret ARN directly
+    const cloudfrontSecretArn = `arn:aws:secretsmanager:${this.region}:${this.account}:secret:getcomplical/cloudfront-api-secret-iXY6j1`;
+    
     this.authorizerFunction = new NodejsFunction(this, 'AuthorizerFunctionV3', {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'handler',
-      entry: path.join(__dirname, '../../lambdas/auth/authorizer-v2.ts'),
+      entry: path.join(__dirname, '../../lambdas/auth/request-authorizer.ts'),
       environment: {
         API_KEYS_TABLE: apiKeysTableName,
         REDIS_ENDPOINT: redisEndpoint,
         REDIS_TLS_ENABLED: 'false',
         VALKEY_AUTH_TOKEN_ARN: valkeyAuthTokenArn,
         FIREHOSE_STREAM_NAME: firehoseStreamName,
+        RATE_LIMIT_TABLE: rateLimitTableName,
+        CLOUDFRONT_SECRET_ARN: cloudfrontSecretArn,
       },
       timeout: cdk.Duration.seconds(3),
       memorySize: 512,
@@ -145,11 +150,18 @@ export class ApiComputeStackV3 extends cdk.Stack {
 
     // Grant permissions
     apiKeysTable.grantReadData(this.authorizerFunction);
+    rateLimitTable.grantReadWriteData(this.authorizerFunction);
     
-    // Grant access to Valkey auth token
+    // Grant access to Valkey auth token and CloudFront secret
     this.authorizerFunction.addToRolePolicy(new iam.PolicyStatement({
       actions: ['secretsmanager:GetSecretValue'],
-      resources: [valkeyAuthTokenArn],
+      resources: [valkeyAuthTokenArn, cloudfrontSecretArn],
+    }));
+    
+    // Grant permissions to write to Kinesis Firehose
+    this.authorizerFunction.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['firehose:PutRecord', 'firehose:PutRecordBatch'],
+      resources: [`arn:aws:firehose:${this.region}:${this.account}:deliverystream/${firehoseStreamName}`],
     }));
 
     // Create API handler function
@@ -339,10 +351,13 @@ export class ApiComputeStackV3 extends cdk.Stack {
       },
     });
 
-    // Create authorizer
-    const authorizer = new apigateway.TokenAuthorizer(this, 'ApiAuthorizerV3', {
+    // Create REQUEST authorizer that validates both API key and CloudFront secret
+    const authorizer = new apigateway.RequestAuthorizer(this, 'ApiAuthorizerV3', {
       handler: this.authorizerFunction,
-      identitySource: 'method.request.header.X-Api-Key',
+      identitySources: [
+        apigateway.IdentitySource.header('X-Api-Key'),
+        apigateway.IdentitySource.header('X-CloudFront-Secret'),
+      ],
       resultsCacheTtl: cdk.Duration.minutes(5),
     });
 
